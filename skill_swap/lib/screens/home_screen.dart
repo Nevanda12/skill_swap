@@ -1,61 +1,92 @@
 import 'package:flutter/material.dart';
 import 'profile_screen.dart';
 import 'match_screen.dart';
+import '../services/api_service.dart'; // Wajib diimpor untuk memanggil API
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int userId; // Menampung ID user yang sedang login
+
+  // Konstruktor diubah agar wajib menerima userId dari halaman Login
+  const HomeScreen({super.key, required this.userId});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 1. Data Dummy Pengguna Lain
-  List<Map<String, dynamic>> dummyUsers = [
-    {
-      'name': 'Alex',
-      'age': 22,
-      'can': 'Flutter Development',
-      'want': 'UI/UX Design'
-    },
-    {
-      'name': 'Budi',
-      'age': 24,
-      'can': 'Python & FastAPI',
-      'want': 'Mobile App Dev'
-    },
-    {
-      'name': 'Citra',
-      'age': 21,
-      'can': 'UI/UX Design',
-      'want': 'Database MySQL'
-    },
-  ];
+  // 1. Data Asli dari Database
+  List<dynamic> discoverUsers = [];
+  bool isLoading = true; // Indikator loading saat mengambil data
+  String emptyMessage = "";
 
-  // 2. Fungsi Logika Swipe (Kanan/Kiri)
-  void _handleSwipe(bool isRightSwipe, Map<String, dynamic> swipedUser) {
-    setState(() {
-      dummyUsers.removeAt(0); // Hapus kartu dari daftar
-    });
+  @override
+  void initState() {
+    super.initState();
+    // Panggil fungsi tarik data saat halaman pertama kali dibuka
+    _loadDiscoveryData();
+  }
 
-    // Simulasi Algoritma Match
-    if (isRightSwipe && swipedUser['name'] == 'Alex') {
+  // Fungsi untuk menarik data dari FastAPI
+  void _loadDiscoveryData() async {
+    var result = await ApiService.discoverUsers(widget.userId);
+    
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+        if (result['status'] == 'success') {
+          discoverUsers = result['data'] ?? [];
+        } else {
+          emptyMessage = result['message'] ?? "Belum ada kecocokan skill saat ini.";
+        }
+      });
+    }
+  }
+
+void _handleSwipe(bool isRightSwipe, dynamic swipedUser) async {
+    int swipedId = swipedUser['id'];
+    String swipedName = swipedUser['name'] ?? swipedUser['full_name'] ?? 'Pengguna';
+    String swipedSkill = (swipedUser['skills']['can'] as List).isNotEmpty 
+        ? (swipedUser['skills']['can'] as List).join(', ') 
+        : '-';
+
+    // 1. Kirim data swipe ke server FastAPI terlebih dahulu
+    var result = await ApiService.swipeUser(
+      swiperId: widget.userId,
+      swipedId: swipedId,
+      isLiked: isRightSwipe,
+    );
+
+    if (!mounted) return;
+
+    // 2. Jika sukses dan terjadi match, arahkan ke widget kelas MatchScreen
+    if (result['status'] == 'success' && result['is_match'] == true) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => MatchScreen(
-            matchedUserName: swipedUser['name'],
-            matchedUserSkill: swipedUser['can'],
+            matchedUserName: swipedName,
+            matchedUserSkill: swipedSkill,
           ),
         ),
-      );
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            if (discoverUsers.isNotEmpty) discoverUsers.removeAt(0);
+          });
+        }
+      });
+    } else {
+      // Jika tidak match, cukup hapus kartu dari tampilan beranda
+      setState(() {
+        if (discoverUsers.isNotEmpty) discoverUsers.removeAt(0);
+      });
     }
   }
 
   // Fungsi trigger untuk tombol manual di bawah
   void _swipeCardFromButton(bool isRightSwipe) {
-    if (dummyUsers.isNotEmpty) {
-      _handleSwipe(isRightSwipe, dummyUsers[0]);
+    if (discoverUsers.isNotEmpty) {
+      _handleSwipe(isRightSwipe, discoverUsers[0]);
     }
   }
 
@@ -83,80 +114,93 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            
-            // 3. Area Tumpukan Kartu
-            Expanded(
-              child: dummyUsers.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Tidak ada lagi pengguna di sekitarmu.',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
+      // Tampilkan indikator loading jika data masih ditarik dari server
+      body: isLoading 
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  
+                  // 3. Area Tumpukan Kartu
+                  Expanded(
+                    child: discoverUsers.isEmpty
+                        ? Center(
+                            child: Text(
+                              emptyMessage.isNotEmpty ? emptyMessage : 'Tidak ada lagi pengguna di sekitarmu.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.grey, fontSize: 16),
+                            ),
+                          )
+                        : Stack(
+                            children: discoverUsers.asMap().entries.map((entry) {
+                              int index = entry.key;
+                              var user = entry.value;
+                              bool isFrontCard = index == 0;
+
+                              Widget card = _buildCard(user);
+
+                              if (isFrontCard) {
+                                return Dismissible(
+                                  // Gunakan ID user sebagai key agar unik
+                                  key: Key(user['id'].toString()),
+                                  direction: DismissDirection.horizontal,
+                                  onDismissed: (direction) {
+                                    bool isRightSwipe = direction == DismissDirection.startToEnd;
+                                    _handleSwipe(isRightSwipe, user);
+                                  },
+                                  child: card,
+                                );
+                              }
+                              
+                              return card;
+                            }).toList().reversed.toList(),
+                          ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // 4. Tombol Kontrol Bawah
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.grey[900],
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.red, size: 28),
+                          onPressed: () => _swipeCardFromButton(false),
+                        ),
                       ),
-                    )
-                  : Stack(
-                      children: dummyUsers.asMap().entries.map((entry) {
-                        int index = entry.key;
-                        var user = entry.value;
-                        bool isFrontCard = index == 0;
-
-                        Widget card = _buildCard(user);
-
-                        if (isFrontCard) {
-                          return Dismissible(
-                            key: Key(user['name']),
-                            direction: DismissDirection.horizontal,
-                            // Memicu fungsi match saat kartu di-swipe pakai jari
-                            onDismissed: (direction) {
-                              bool isRightSwipe = direction == DismissDirection.startToEnd;
-                              _handleSwipe(isRightSwipe, user);
-                            },
-                            child: card,
-                          );
-                        }
-                        
-                        return card;
-                      }).toList().reversed.toList(),
-                    ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // 4. Tombol Kontrol Bawah
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.grey[900],
-                  child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.red, size: 28),
-                    onPressed: () => _swipeCardFromButton(false), // Swipe Kiri = false
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.white,
+                        child: IconButton(
+                          icon: const Icon(Icons.favorite, color: Colors.black, size: 28),
+                          onPressed: () => _swipeCardFromButton(true),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.white,
-                  child: IconButton(
-                    icon: const Icon(Icons.favorite, color: Colors.black, size: 28),
-                    onPressed: () => _swipeCardFromButton(true), // Swipe Kanan = true
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
     );
   }
 
-  // 5. Desain Kartu
-  Widget _buildCard(Map<String, dynamic> user) {
+  // 5. Desain Kartu (Telah disesuaikan dengan format JSON dari API)
+  Widget _buildCard(dynamic user) {
+    // Mengekstrak daftar skill dari API
+    String canSkills = (user['skills']['can'] as List).isNotEmpty 
+        ? (user['skills']['can'] as List).join(', ') 
+        : '-';
+    String wantSkills = (user['skills']['want'] as List).isNotEmpty 
+        ? (user['skills']['want'] as List).join(', ') 
+        : '-';
+    String displayName = user['name'] ?? user['full_name'] ?? 'Pengguna';
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -191,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${user['name']}, ${user['age']}',
+                    displayName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -208,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'Can: ${user['can']}',
+                          'Can: $canSkills',
                           style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -224,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'Want: ${user['want']}',
+                          'Want: $wantSkills',
                           style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),

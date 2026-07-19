@@ -333,7 +333,7 @@ def discover_users(user_id: int):
     
     cursor = connection.cursor(dictionary=True)
     try:
-        # 1. Ambil daftar skill yang dicari/diinginkan (WANT) oleh user ini
+        # 1. Ambil daftar skill yang diinginkan (WANT) oleh user ini
         query_wanted_skills = """
             SELECT skill_name FROM user_skills 
             WHERE user_id = %s AND skill_type = 'WANT'
@@ -341,36 +341,32 @@ def discover_users(user_id: int):
         cursor.execute(query_wanted_skills, (user_id,))
         wanted_skills_res = cursor.fetchall()
         
-        # Jika user belum menentukan skill yang ingin dipelajari, 
-        # kita ambil skill secara acak atau kosongkan dulu rekomendasi
         if not wanted_skills_res:
-            return {"message": "Tentukan skill yang ingin kamu pelajari terlebih dahulu!", "data": []}
+            return {"status": "empty", "message": "Tentukan skill yang ingin kamu pelajari terlebih dahulu!", "data": []}
             
         wanted_skills = [row['skill_name'] for row in wanted_skills_res]
 
-        # 2. Query Utama Rekomendasi:
-        # Cari user lain yang bisa (CAN) skill yang dicari user ini,
-        # DAN user lain tersebut belum pernah di-swipe (tidak ada di tabel swipes) oleh user ini,
-        # DAN bukan merupakan diri sendiri.
-        query_discover = """
-            SELECT DISTINCT u.id, u.name, u.email 
+        # 2. Query Utama Rekomendasi yang lebih aman dari eror SQL
+        placeholders = ','.join(['%s'] * len(wanted_skills))
+        query_discover = f"""
+            SELECT DISTINCT u.id, u.full_name, u.email 
             FROM users u
             JOIN user_skills us ON u.id = us.user_id
             WHERE us.skill_type = 'CAN' 
-            AND us.skill_name IN ({})
+            AND us.skill_name IN ({placeholders})
             AND u.id != %s
             AND u.id NOT IN (
-                SELECT target_id FROM swipes WHERE swiper_id = %s
+                SELECT COALESCE(swiped_id, 0) FROM swipes WHERE swiper_id = %s
             )
-        """.format(','.join(['%s'] * len(wanted_skills)))
+        """
         
-        # Gabungkan parameter untuk query IN (...) dan target user_id
+        # Gabungkan parameter
         params = wanted_skills + [user_id, user_id]
         
         cursor.execute(query_discover, params)
         recommended_users = cursor.fetchall()
 
-        # 3. Lengkapi data rekomendasi dengan daftar skill 'CAN' & 'WANT' milik mereka
+        # 3. Format hasil akhir agar sesuai dengan struktur UI Flutter kamu
         final_data = []
         for r_user in recommended_users:
             cursor.execute(
@@ -379,11 +375,17 @@ def discover_users(user_id: int):
             )
             skills = cursor.fetchall()
             
-            r_user['skills'] = {
-                'can': [s['skill_name'] for s in skills if s['skill_type'] == 'CAN'],
-                'want': [s['skill_name'] for s in skills if s['skill_type'] == 'WANT']
+            # Buat mapping nama field 'name' agar serasi dengan kode UI Flutter
+            final_user_node = {
+                "id": r_user['id'],
+                "name": r_user['full_name'],
+                "email": r_user['email'],
+                "skills": {
+                    "can": [s['skill_name'] for s in skills if s['skill_type'] == 'CAN'],
+                    "want": [s['skill_name'] for s in skills if s['skill_type'] == 'WANT']
+                }
             }
-            final_data.append(r_user)
+            final_data.append(final_user_node)
 
         return {
             "status": "success",
@@ -392,6 +394,8 @@ def discover_users(user_id: int):
         }
 
     except mysql.connector.Error as err:
+        # Menampilkan pesan error spesifik di terminal backend untuk mempermudah debugging
+        print(f"❌ SQL ERROR: {err}")
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
         cursor.close()

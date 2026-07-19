@@ -5,7 +5,6 @@ class MatchScreen extends StatelessWidget {
   final String matchedUserName;
   final String matchedUserSkill;
 
-  // Kita minta data nama dan skill pengguna yang cocok untuk ditampilkan
   const MatchScreen({
     super.key,
     required this.matchedUserName,
@@ -15,14 +14,13 @@ class MatchScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black87, // Hitam sedikit transparan
+      backgroundColor: Colors.black87,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Judul Match
               const Text(
                 "IT'S A MATCH!",
                 style: TextStyle(
@@ -33,8 +31,6 @@ class MatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // Deskripsi
               Text(
                 'You and $matchedUserName liked each other.',
                 style: const TextStyle(
@@ -43,8 +39,6 @@ class MatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 48),
-
-              // Ikon Avatar Berdampingan (Simulasi)
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -54,18 +48,16 @@ class MatchScreen extends StatelessWidget {
                     child: const Icon(Icons.person, size: 50, color: Colors.white),
                   ),
                   const SizedBox(width: 16),
-                  const Icon(Icons.sync_alt, color: Colors.greenAccent, size: 40), // Ikon Swap
+                  const Icon(Icons.sync_alt, color: Colors.greenAccent, size: 40),
                   const SizedBox(width: 16),
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 45,
                     backgroundColor: Colors.white,
-                    child: const Icon(Icons.person, size: 50, color: Colors.black),
+                    child: Icon(Icons.person, size: 50, color: Colors.black),
                   ),
                 ],
               ),
               const SizedBox(height: 48),
-
-              // Info Skill yang bisa dibarter
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 decoration: BoxDecoration(
@@ -79,24 +71,19 @@ class MatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 48),
-
-              // Tombol Chat
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
-                    // Nanti kita arahkan ke Halaman Chat di sini
-                  Navigator.pop(context);
-
-                  // Lalu buka halaman Chat
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChatScreen(chatPartnerName: matchedUserName),
-                    ),
-                  );
-                },
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatScreen(chatPartnerName: matchedUserName),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
@@ -108,14 +95,12 @@ class MatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Tombol Keep Swiping (Kembali)
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: OutlinedButton(
                   onPressed: () {
-                    Navigator.pop(context); // Menutup layar Match dan kembali ke Home
+                    Navigator.pop(context);
                   },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white),

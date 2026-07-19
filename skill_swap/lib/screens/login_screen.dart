@@ -47,7 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // Pindah langsung ke HomeScreen
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()), 
+        MaterialPageRoute(
+          builder: (context) => HomeScreen(userId: result['user']['id']), 
+        ),
       );
     } else {
       // Menampilkan pesan error asli dari backend jika ada (misal password salah)
