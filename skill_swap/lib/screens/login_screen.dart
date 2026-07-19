@@ -1,9 +1,70 @@
 import 'package:flutter/material.dart';
-import 'register_screen.dart'; // Pastikan import ini ada di paling atas
+import '../services/api_service.dart'; // Mengimpor API Service
+import 'register_screen.dart';
 import 'home_screen.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  // 1. Controller untuk menangkap teks yang diketik user
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+
+  // 2. Fungsi Logika Login (dipisah dari tampilan UI)
+  void _handleLogin() async {
+    String email = emailController.text.trim();
+    String password = passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Email dan Password tidak boleh kosong!")),
+      );
+      return;
+    }
+
+    // Tampilkan indikator loading kecil agar kita tahu aplikasi sedang bekerja
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Sedang memverifikasi data..."), duration: Duration(seconds: 1)),
+    );
+
+    var result = await ApiService.loginUser(email: email, password: password);
+
+    if (!mounted) return; 
+
+    // MODIFIKASI: Flutter akan lolos jika statusnya 'success' ATAU jika backend langsung mengembalikan objek 'user'
+    if (result['status'] == 'success' || result.containsKey('user')) {
+      String name = result['user'] != null ? result['user']['full_name'] : "Pengguna";
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Login Berhasil! Selamat Datang $name")),
+      );
+      
+      // Pindah langsung ke HomeScreen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()), 
+      );
+    } else {
+      // Menampilkan pesan error asli dari backend jika ada (misal password salah)
+      String errorMessage = result['detail'] ?? result['message'] ?? "Login Gagal! Akun tidak cocok.";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    }
+  }
+
+  // 3. Bersihkan memori saat halaman ditutup
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +77,6 @@ class LoginScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Judul
                 const Text(
                   'Welcome Back',
                   style: TextStyle(
@@ -35,13 +95,13 @@ class LoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 48),
 
-                // Input Email
                 const Text(
                   'Email Address',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: emailController, // Sambungkan controller ke sini
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: 'Enter your email',
@@ -56,13 +116,13 @@ class LoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Input Password
                 const Text(
                   'Password',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: passwordController, // Sambungkan controller ke sini
                   obscureText: true,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
@@ -78,20 +138,11 @@ class LoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 48),
 
-                // Tombol Login
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Nanti logika login di sini
-                    // Berpindah ke HomeScreen dan menghapus riwayat halaman sebelumnya
-                    Navigator.pushReplacement(
-                    context,
-                       MaterialPageRoute(builder: (context) => const HomeScreen()),
-                    );
-
-                    },
+                    onPressed: _handleLogin, // Panggil fungsi di sini
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: Colors.black,
@@ -107,7 +158,6 @@ class LoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Tombol navigasi ke Register Screen
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

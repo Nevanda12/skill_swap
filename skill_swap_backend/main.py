@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import mysql.connector
 
 app = FastAPI()
@@ -70,6 +70,21 @@ def create_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+
+    # ==========================================
+    # TAMBAHKAN QUERY TABEL CHATS DI SINI kawan!
+    # ==========================================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chats (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        match_id INT NOT NULL,
+        sender_id INT NOT NULL,
+        message TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
     );
     """)
 
@@ -305,3 +320,203 @@ def process_swipe(data: SwipeInput):
     finally:
         cursor.close()
         db.close()
+
+# =====================================================================
+# CHAPTER 2: DISCOVERY ENDPOINT (Rekomendasi User Berdasarkan Skill)
+# =====================================================================
+
+@app.get("/api/discover/{user_id}")
+def discover_users(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # 1. Ambil daftar skill yang dicari/diinginkan (WANT) oleh user ini
+        query_wanted_skills = """
+            SELECT skill_name FROM user_skills 
+            WHERE user_id = %s AND skill_type = 'WANT'
+        """
+        cursor.execute(query_wanted_skills, (user_id,))
+        wanted_skills_res = cursor.fetchall()
+        
+        # Jika user belum menentukan skill yang ingin dipelajari, 
+        # kita ambil skill secara acak atau kosongkan dulu rekomendasi
+        if not wanted_skills_res:
+            return {"message": "Tentukan skill yang ingin kamu pelajari terlebih dahulu!", "data": []}
+            
+        wanted_skills = [row['skill_name'] for row in wanted_skills_res]
+
+        # 2. Query Utama Rekomendasi:
+        # Cari user lain yang bisa (CAN) skill yang dicari user ini,
+        # DAN user lain tersebut belum pernah di-swipe (tidak ada di tabel swipes) oleh user ini,
+        # DAN bukan merupakan diri sendiri.
+        query_discover = """
+            SELECT DISTINCT u.id, u.name, u.email 
+            FROM users u
+            JOIN user_skills us ON u.id = us.user_id
+            WHERE us.skill_type = 'CAN' 
+            AND us.skill_name IN ({})
+            AND u.id != %s
+            AND u.id NOT IN (
+                SELECT target_id FROM swipes WHERE swiper_id = %s
+            )
+        """.format(','.join(['%s'] * len(wanted_skills)))
+        
+        # Gabungkan parameter untuk query IN (...) dan target user_id
+        params = wanted_skills + [user_id, user_id]
+        
+        cursor.execute(query_discover, params)
+        recommended_users = cursor.fetchall()
+
+        # 3. Lengkapi data rekomendasi dengan daftar skill 'CAN' & 'WANT' milik mereka
+        final_data = []
+        for r_user in recommended_users:
+            cursor.execute(
+                "SELECT skill_name, skill_type FROM user_skills WHERE user_id = %s", 
+                (r_user['id'],)
+            )
+            skills = cursor.fetchall()
+            
+            r_user['skills'] = {
+                'can': [s['skill_name'] for s in skills if s['skill_type'] == 'CAN'],
+                'want': [s['skill_name'] for s in skills if s['skill_type'] == 'WANT']
+            }
+            final_data.append(r_user)
+
+        return {
+            "status": "success",
+            "count": len(final_data),
+            "data": final_data
+        }
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 3: CHAT SYSTEM ENDPOINTS (Manajemen Obrolan Setelah Match)
+# =====================================================================
+from pydantic import BaseModel
+
+class ChatMessageInput(BaseModel):
+    match_id: int
+    sender_id: int
+    message: str
+
+@app.post("/api/chat/send")
+def send_message(chat_input: ChatMessageInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id FROM matches WHERE id = %s", (chat_input.match_id,))
+        match_exists = cursor.fetchone()
+        if not match_exists:
+            raise HTTPException(status_code=404, detail="Match session not found")
+
+        query_insert_chat = """
+            INSERT INTO chats (match_id, sender_id, message)
+            VALUES (%s, %s, %s)
+        """
+        cursor.execute(query_insert_chat, (chat_input.match_id, chat_input.sender_id, chat_input.message))
+        connection.commit()
+        
+        return {
+            "status": "success",
+            "message": "Message sent successfully!",
+            "chat_id": cursor.lastrowid
+        }
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.get("/api/chat/history/{match_id}")
+def get_chat_history(match_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Menggunakan full_name agar sesuai dengan skema tabel users kamu
+        query_history = """
+            SELECT c.id, c.sender_id, u.full_name AS sender_name, c.message, c.timestamp 
+            FROM chats c
+            JOIN users u ON c.sender_id = u.id
+            WHERE c.match_id = %s
+            ORDER BY c.timestamp ASC
+        """
+        cursor.execute(query_history, (match_id,))
+        history = cursor.fetchall()
+        
+        for row in history:
+            if row['timestamp']:
+                row['timestamp'] = row['timestamp'].isoformat()
+
+        return {
+            "status": "success",
+            "count": len(history),
+            "data": history
+        }
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 4: WORKFLOW STATE ENDPOINT (Manajemen Status Barter Skripsi)
+# =====================================================================
+
+class UpdateMatchStatusInput(BaseModel):
+    match_id: int
+    current_user_id: int  # Opsional: Untuk validasi apakah user ini berhak mengubah status
+    new_status: str       # Harus salah satu dari: MATCHED, DISCUSSING, SWAP_ONGOING, COMPLETED
+
+@app.put("/api/match/status")
+def update_match_status(status_input: UpdateMatchStatusInput):
+    # Validasi input ENUM agar sesuai dengan skema database kamu
+    allowed_statuses = ['MATCHED', 'DISCUSSING', 'SWAP_ONGOING', 'COMPLETED']
+    if status_input.new_status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Status harus salah satu dari: {allowed_statuses}")
+        
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # 1. Pastikan match tersebut ada dan user terlibat di dalamnya
+        query_check = "SELECT id, user1_id, user2_id FROM matches WHERE id = %s"
+        cursor.execute(query_check, (status_input.match_id,))
+        match = cursor.fetchone()
+        
+        if not match:
+            raise HTTPException(status_code=404, detail="Sesi match tidak ditemukan.")
+            
+        if status_input.current_user_id not in [match['user1_id'], match['user2_id']]:
+            raise HTTPException(status_code=403, detail="Kamu tidak terdaftar dalam sesi barter ini.")
+
+        # 2. Lakukan update status workflow
+        query_update = "UPDATE matches SET status = %s WHERE id = %s"
+        cursor.execute(query_update, (status_input.new_status, status_input.match_id))
+        connection.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Status alur barter berhasil diperbarui menjadi {status_input.new_status}!"
+        }
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
