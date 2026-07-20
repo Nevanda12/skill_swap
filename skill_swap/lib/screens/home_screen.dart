@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'profile_screen.dart';
 import 'match_screen.dart';
 import '../services/api_service.dart'; // Wajib diimpor untuk memanggil API
+import 'chat_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final int userId; // Menampung ID user yang sedang login
@@ -59,13 +60,21 @@ void _handleSwipe(bool isRightSwipe, dynamic swipedUser) async {
     if (!mounted) return;
 
     // 2. Jika sukses dan terjadi match, arahkan ke widget kelas MatchScreen
-    if (result['status'] == 'success' && result['is_match'] == true) {
+    // 2. Jika sukses dan terjadi match, arahkan ke widget kelas MatchScreen
+    if (result['status'] == 'match') {
+      
+      // Ambil match_id yang baru saja dikembalikan oleh backend
+      int newMatchId = result['match_id'];
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => MatchScreen(
             matchedUserName: swipedName,
             matchedUserSkill: swipedSkill,
+            matchId: newMatchId,          // <--- TAMBAHKAN INI
+            currentUserId: widget.userId,
+            matchedUserId: swipedId,      // <--- TAMBAHKAN INI
           ),
         ),
       ).then((_) {
@@ -76,7 +85,7 @@ void _handleSwipe(bool isRightSwipe, dynamic swipedUser) async {
         }
       });
     } else {
-      // Jika tidak match, cukup hapus kartu dari tampilan beranda
+      // Jika tidak match...
       setState(() {
         if (discoverUsers.isNotEmpty) discoverUsers.removeAt(0);
       });
@@ -103,12 +112,27 @@ void _handleSwipe(bool isRightSwipe, dynamic swipedUser) async {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2),
         ),
         actions: [
+          //icon chat
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChatListScreen(currentUserId: widget.userId),
+                ),
+              );
+            },
+          ),
+          //icon profile
           IconButton(
             icon: const Icon(Icons.person_outline, color: Colors.white),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(currentUserId: widget.userId),
+                ),
               );
             },
           ),

@@ -88,6 +88,32 @@ def create_tables():
     );
     """)
 
+    # ==========================================
+    # TAMBAHKAN QUERY TABEL REVIEWS DI SINI
+    # ==========================================
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        match_id INT NOT NULL,
+        reviewer_id INT NOT NULL,
+        reviewed_user_id INT NOT NULL,
+        rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        review_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+
+    # (Di dalam fungsi create_tables, sebelum db.commit())
+    # Tambahkan kolom foto profil jika belum ada
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN profile_photo LONGTEXT;")
+    except mysql.connector.Error as err:
+        # Abaikan error jika kolom sudah ada (Error 1060: Duplicate column name)
+        pass
+
     db.commit()
     cursor.close()
     db.close()
@@ -235,7 +261,10 @@ def save_user_skills(data: UserSkillsInput):
         INSERT INTO user_skills (user_id, skill_type, skill_name) 
         VALUES (%s, %s, %s)
         """
-        
+        want_skills_count = sum(1 for item in data.skills if item.skill_type.upper() == 'WANT')
+        if want_skills_count > 1:
+            return {"status": "error", "message": "Kamu hanya boleh memilih 1 skill yang ingin dipelajari (WANT)!"}
+
         for item in data.skills:
             # Validasi isi skill_type secara manual demi keamanan database
             if item.skill_type.upper() not in ['CAN', 'WANT']:
@@ -269,20 +298,22 @@ def process_swipe(data: SwipeInput):
     cursor = db.cursor(dictionary=True)
     
     try:
-        # A. Masukkan data swipe saat ini ke tabel `swipes`
+        # A. Masukkan data swipe saat ini ke tabel `swipes` dan langsung COMMIT!
         insert_swipe_query = """
         INSERT INTO swipes (swiper_id, swiped_id, is_liked) 
         VALUES (%s, %s, %s)
         """
         cursor.execute(insert_swipe_query, (data.swiper_id, data.swiped_id, data.is_liked))
+        db.commit() # Kita commit sekarang agar datanya resmi tertulis di MySQL
         
         # B. Jika swipe kanan (is_liked = True), cek apakah ada potensi MATCHED (Timbal Balik)
         if data.is_liked:
+            # Cari apakah ada row di mana: 
+            # swiper-nya adalah target (swiped_id) DAN yang di-swipe adalah kita (swiper_id)
             check_match_query = """
             SELECT id FROM swipes 
             WHERE swiper_id = %s AND swiped_id = %s AND is_liked = TRUE
             """
-            # Memeriksa apakah swiped_id (orang di kartu) pernah menyukai swiper_id (kamu)
             cursor.execute(check_match_query, (data.swiped_id, data.swiper_id))
             reverse_swipe = cursor.fetchone()
             
@@ -303,15 +334,18 @@ def process_swipe(data: SwipeInput):
                     VALUES (%s, %s, 'MATCHED')
                     """
                     cursor.execute(insert_match_query, (data.swiper_id, data.swiped_id))
-                    db.commit()
+                    db.commit() # Commit data match baru
+
+                    # Ambil ID match yang baru saja terbuat
+                    new_match_id = cursor.lastrowid
                     
                     return {
                         "status": "match",
                         "message": "IT'S A MATCH! Algoritma Dua Arah Berhasil Mendeteksi Kecocokan.",
-                        "matched_with": data.swiped_id
+                        "matched_with": data.swiped_id,
+                        "match_id": new_match_id
                     }
         
-        db.commit()
         return {"status": "success", "message": "Swipe berhasil dicatat."}
         
     except mysql.connector.Error as err:
@@ -519,6 +553,201 @@ def update_match_status(status_input: UpdateMatchStatusInput):
             "message": f"Status alur barter berhasil diperbarui menjadi {status_input.new_status}!"
         }
         
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.get("/api/matches/active/{user_id}")
+def get_active_matches(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Cari semua match di mana user_id terlibat (bisa sebagai user1 atau user2)
+        query = """
+            SELECT m.id AS match_id, m.status,
+                   u.id AS partner_id, u.full_name AS partner_name
+            FROM matches m
+            JOIN users u ON (m.user1_id = u.id OR m.user2_id = u.id)
+            WHERE (m.user1_id = %s OR m.user2_id = %s) AND u.id != %s
+        """
+        cursor.execute(query, (user_id, user_id, user_id))
+        active_matches = cursor.fetchall()
+        
+        return {"status": "success", "data": active_matches}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 5: REVIEW SYSTEM ENDPOINT (Penilaian Partner Barter)
+# =====================================================================
+
+class ReviewInput(BaseModel):
+    match_id: int
+    reviewer_id: int
+    reviewed_user_id: int
+    rating: int
+    review_text: str
+
+@app.post("/api/review/submit")
+def submit_review(data: ReviewInput):
+    # Validasi rating
+    if data.rating < 1 or data.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating harus antara 1 dan 5.")
+
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Cek apakah user sudah pernah memberi ulasan untuk match ini (mencegah spam/duplikat)
+        cursor.execute("""
+            SELECT id FROM reviews 
+            WHERE match_id = %s AND reviewer_id = %s
+        """, (data.match_id, data.reviewer_id))
+        existing_review = cursor.fetchone()
+        
+        if existing_review:
+            return {"status": "error", "message": "Kamu sudah memberikan ulasan untuk sesi ini."}
+
+        # Simpan ulasan baru
+        query_insert = """
+            INSERT INTO reviews (match_id, reviewer_id, reviewed_user_id, rating, review_text)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        cursor.execute(query_insert, (data.match_id, data.reviewer_id, data.reviewed_user_id, data.rating, data.review_text))
+        connection.commit()
+        
+        return {"status": "success", "message": "Terima kasih atas ulasanmu!"}
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@app.get("/api/review/check/{match_id}/{reviewer_id}")
+def check_review_status(match_id: int, reviewer_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT id FROM reviews 
+            WHERE match_id = %s AND reviewer_id = %s
+        """, (match_id, reviewer_id))
+        existing_review = cursor.fetchone()
+        
+        return {
+            "status": "success",
+            "has_reviewed": bool(existing_review) # Mengembalikan True jika ulasan sudah ada
+        }
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 6: PROFILE & REVIEWS MANAGEMENT
+# =====================================================================
+
+@app.get("/api/profile/{user_id}")
+def get_user_profile(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # 1. Ambil data dasar user beserta rata-rata rating
+        query_user = """
+            SELECT u.id, u.full_name, u.email, u.profile_photo,
+                   COALESCE(AVG(r.rating), 0) as average_rating,
+                   COUNT(r.id) as total_reviews
+            FROM users u
+            LEFT JOIN reviews r ON u.id = r.reviewed_user_id
+            WHERE u.id = %s
+            GROUP BY u.id
+        """
+        cursor.execute(query_user, (user_id,))
+        user_data = cursor.fetchone()
+        
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User tidak ditemukan")
+
+        # 2. Ambil daftar keahlian
+        cursor.execute("SELECT skill_type, skill_name FROM user_skills WHERE user_id = %s", (user_id,))
+        skills = cursor.fetchall()
+        
+        user_data['skills'] = {
+            "can": [s['skill_name'] for s in skills if s['skill_type'] == 'CAN'],
+            "want": [s['skill_name'] for s in skills if s['skill_type'] == 'WANT']
+        }
+        
+        # Konversi float desimal rating agar rapi (misal: 4.5)
+        user_data['average_rating'] = round(float(user_data['average_rating']), 1)
+
+        return {"status": "success", "data": user_data}
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.get("/api/profile/reviews/{user_id}")
+def get_user_reviews_list(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Ambil semua ulasan untuk user ini beserta nama pengulasnya
+        query = """
+            SELECT r.rating, r.review_text, r.created_at, u.full_name as reviewer_name 
+            FROM reviews r
+            JOIN users u ON r.reviewer_id = u.id
+            WHERE r.reviewed_user_id = %s
+            ORDER BY r.created_at DESC
+        """
+        cursor.execute(query, (user_id,))
+        reviews = cursor.fetchall()
+        
+        return {"status": "success", "data": reviews}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+class ProfilePhotoInput(BaseModel):
+    user_id: int
+    photo_base64: str
+
+@app.put("/api/profile/photo")
+def update_profile_photo(data: ProfilePhotoInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE users SET profile_photo = %s WHERE id = %s", (data.photo_base64, data.user_id))
+        connection.commit()
+        return {"status": "success", "message": "Foto profil berhasil diperbarui!"}
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:

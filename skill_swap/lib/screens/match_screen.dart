@@ -4,11 +4,17 @@ import 'chat_screen.dart';
 class MatchScreen extends StatelessWidget {
   final String matchedUserName;
   final String matchedUserSkill;
+  final int matchId;           // Tambahkan penampung matchId
+  final int currentUserId;
+  final int matchedUserId;    // Tambahkan penampung currentUserId
 
   const MatchScreen({
     super.key,
     required this.matchedUserName,
     required this.matchedUserSkill,
+    required this.matchId,       // Wajib diisi saat dipanggil
+    required this.currentUserId, // Wajib diisi saat dipanggil
+    required this.matchedUserId, // Wajib diisi saat dipanggil
   });
 
   @override
@@ -80,7 +86,12 @@ class MatchScreen extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ChatScreen(chatPartnerName: matchedUserName),
+                        builder: (context) => ChatScreen(
+                          chatPartnerName: matchedUserName,
+                          matchId: matchId,             // Teruskan ke ChatScreen
+                          currentUserId: currentUserId,
+                          chatPartnerId: matchedUserId, // Teruskan ke ChatScreen
+                        ),
                       ),
                     );
                   },
