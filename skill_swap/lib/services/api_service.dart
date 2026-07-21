@@ -53,18 +53,30 @@ class ApiService {
     }
   }
 
-  // 3. Service untuk Mendapatkan Rekomendasi (Discovery)
-  static Future<Map<String, dynamic>> discoverUsers(int userId) async {
-    final url = Uri.parse('$baseUrl/discover/$userId');
+  // 3. Service untuk Mendapatkan Rekomendasi (Discovery) & Pencarian
+  static Future<Map<String, dynamic>> discoverUsers(int userId, {String? searchName, String? filterSkill}) async {
+    // Membangun URL beserta parameter filter jika ada
+    var uri = Uri.parse('$baseUrl/discover/$userId');
+    Map<String, String> queryParams = {};
+    
+    if (searchName != null && searchName.trim().isNotEmpty) {
+      queryParams['search_name'] = searchName.trim();
+    }
+    if (filterSkill != null && filterSkill.isNotEmpty && filterSkill != 'Semua Skill') {
+      queryParams['filter_skill'] = filterSkill;
+    }
+
+    if (queryParams.isNotEmpty) {
+      uri = uri.replace(queryParameters: queryParams);
+    }
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
-
 
 // 4. Service untuk Melakukan Swipe (Like / Dislike)
   static Future<Map<String, dynamic>> swipeUser({
@@ -260,6 +272,74 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       return jsonDecode(response.body);
     } catch (e) {
       return {"status": "error", "message": "Gagal update skills: $e"};
+    }
+  }
+
+// 14. Service untuk Mengecek Notifikasi Pesan Baru (Unread)
+  static Future<Map<String, dynamic>> checkUnreadMessages(int userId) async {
+    final url = Uri.parse('$baseUrl/chat/unread/$userId');
+    try {
+      final response = await http.get(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal mengecek notifikasi pesan: $e"};
+    }
+  }
+
+  // 15. Service untuk Menandai Pesan Telah Dibaca
+  static Future<Map<String, dynamic>> markMessagesAsRead({
+    required int matchId,
+    required int userId,
+  }) async {
+    final url = Uri.parse('$baseUrl/chat/read/$matchId/$userId');
+    try {
+      final response = await http.put(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal update status baca: $e"};
+    }
+  }
+
+// 16. Service untuk Menghapus Obrolan (Delete Match)
+  static Future<Map<String, dynamic>> deleteMatch(int matchId) async {
+    final url = Uri.parse('$baseUrl/match/delete/$matchId');
+    try {
+      final response = await http.delete(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal menghapus obrolan: $e"};
+    }
+  }
+
+  // 17. Service untuk Memblokir Pengguna
+  static Future<Map<String, dynamic>> blockUser({
+    required int blockerId,
+    required int blockedId,
+  }) async {
+    final url = Uri.parse('$baseUrl/user/block');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "blocker_id": blockerId,
+          "blocked_id": blockedId,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memblokir pengguna: $e"};
+    }
+  }
+
+// 18. Service untuk Mengambil Rekap Skill di Halaman Jelajah
+  static Future<Map<String, dynamic>> getSkillsSummary() async {
+    final url = Uri.parse('$baseUrl/skills/summary');
+    try {
+      final response = await http.get(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memuat rekap skill: $e"};
     }
   }
 }

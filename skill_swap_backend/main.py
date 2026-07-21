@@ -82,6 +82,7 @@ def create_tables():
         match_id INT NOT NULL,
         sender_id INT NOT NULL,
         message TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
         FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
@@ -106,12 +107,30 @@ def create_tables():
     );
     """)
 
+    # Query SQL untuk membuat tabel blocks (Fitur Blokir Pengguna)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS blocks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        blocker_id INT NOT NULL,
+        blocked_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (blocked_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_block (blocker_id, blocked_id)
+    );
+    """)
+
     # (Di dalam fungsi create_tables, sebelum db.commit())
     # Tambahkan kolom foto profil jika belum ada
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN profile_photo LONGTEXT;")
     except mysql.connector.Error as err:
         # Abaikan error jika kolom sudah ada (Error 1060: Duplicate column name)
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE chats ADD COLUMN is_read BOOLEAN DEFAULT FALSE;")
+    except mysql.connector.Error:
         pass
 
     db.commit()
@@ -359,61 +378,64 @@ def process_swipe(data: SwipeInput):
 # CHAPTER 2: DISCOVERY ENDPOINT (Rekomendasi User Berdasarkan Skill)
 # =====================================================================
 
+# Ubah baris parameternya agar bisa menerima search_name dan filter_skill
 @app.get("/api/discover/{user_id}")
-def discover_users(user_id: int):
+def discover_users(user_id: int, search_name: str = None, filter_skill: str = None):
     connection = get_db_connection()
     if not connection:
         raise HTTPException(status_code=500, detail="Database connection failed")
     
     cursor = connection.cursor(dictionary=True)
     try:
-        # 1. Ambil daftar skill yang diinginkan (WANT) oleh user ini
-        query_wanted_skills = """
-            SELECT skill_name FROM user_skills 
-            WHERE user_id = %s AND skill_type = 'WANT'
-        """
-        cursor.execute(query_wanted_skills, (user_id,))
-        wanted_skills_res = cursor.fetchall()
-        
-        if not wanted_skills_res:
-            return {"status": "empty", "message": "Tentukan skill yang ingin kamu pelajari terlebih dahulu!", "data": []}
-            
-        wanted_skills = [row['skill_name'] for row in wanted_skills_res]
+        # 1. Tentukan target skill (dari dropdown filter ATAU dari profil WANT)
+        target_skills = []
+        if filter_skill:
+            target_skills = [filter_skill] # Jika user memfilter, gunakan skill dari dropdown
+        else:
+            # Jika tidak ada filter, gunakan skill WANT bawaan dari profil
+            cursor.execute("SELECT skill_name FROM user_skills WHERE user_id = %s AND skill_type = 'WANT'", (user_id,))
+            wanted_skills_res = cursor.fetchall()
+            target_skills = [row['skill_name'] for row in wanted_skills_res]
 
-        # 2. Query Utama Rekomendasi yang lebih aman dari eror SQL
-        placeholders = ','.join(['%s'] * len(wanted_skills))
+        if not target_skills:
+            return {"status": "empty", "message": "Tentukan skill yang ingin kamu pelajari di Profil terlebih dahulu!", "data": []}
+
+        # 2. Susun Query Rekomendasi
+        placeholders = ','.join(['%s'] * len(target_skills))
         query_discover = f"""
-            SELECT DISTINCT u.id, u.full_name, u.email 
+            SELECT DISTINCT u.id, u.full_name, u.email, u.profile_photo 
             FROM users u
             JOIN user_skills us ON u.id = us.user_id
             WHERE us.skill_type = 'CAN' 
             AND us.skill_name IN ({placeholders})
             AND u.id != %s
-            AND u.id NOT IN (
-                SELECT COALESCE(swiped_id, 0) FROM swipes WHERE swiper_id = %s
-            )
+            AND u.id NOT IN (SELECT COALESCE(swiped_id, 0) FROM swipes WHERE swiper_id = %s)
+            AND u.id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = %s)
+            AND u.id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = %s)
         """
         
-        # Gabungkan parameter
-        params = wanted_skills + [user_id, user_id]
-        
+        # Susun array parameter dasar
+        params = target_skills + [user_id, user_id, user_id, user_id]
+
+        # 3. Jika user mengetik nama di kolom pencarian, tambahkan ke SQL
+        if search_name:
+            query_discover += " AND u.full_name LIKE %s"
+            params.append(f"{search_name}%") # Menggunakan % di akhir agar mencari abjad awalan
+
         cursor.execute(query_discover, params)
         recommended_users = cursor.fetchall()
 
-        # 3. Format hasil akhir agar sesuai dengan struktur UI Flutter kamu
+        # 4. Format hasil akhir (Tetap sama seperti sebelumnya)
         final_data = []
         for r_user in recommended_users:
-            cursor.execute(
-                "SELECT skill_name, skill_type FROM user_skills WHERE user_id = %s", 
-                (r_user['id'],)
-            )
+            cursor.execute("SELECT skill_name, skill_type FROM user_skills WHERE user_id = %s", (r_user['id'],))
             skills = cursor.fetchall()
             
-            # Buat mapping nama field 'name' agar serasi dengan kode UI Flutter
             final_user_node = {
                 "id": r_user['id'],
                 "name": r_user['full_name'],
                 "email": r_user['email'],
+                "profile_photo": r_user['profile_photo'],
                 "skills": {
                     "can": [s['skill_name'] for s in skills if s['skill_type'] == 'CAN'],
                     "want": [s['skill_name'] for s in skills if s['skill_type'] == 'WANT']
@@ -421,14 +443,9 @@ def discover_users(user_id: int):
             }
             final_data.append(final_user_node)
 
-        return {
-            "status": "success",
-            "count": len(final_data),
-            "data": final_data
-        }
+        return {"status": "success", "count": len(final_data), "data": final_data}
 
     except mysql.connector.Error as err:
-        # Menampilkan pesan error spesifik di terminal backend untuk mempermudah debugging
         print(f"❌ SQL ERROR: {err}")
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
@@ -567,15 +584,19 @@ def get_active_matches(user_id: int):
     
     cursor = connection.cursor(dictionary=True)
     try:
-        # Cari semua match di mana user_id terlibat (bisa sebagai user1 atau user2)
+        # Tambahkan filter WHERE untuk memastikan partner_id tidak ada di tabel blocks (baik memblokir atau diblokir)
         query = """
             SELECT m.id AS match_id, m.status,
-                   u.id AS partner_id, u.full_name AS partner_name
+                   u.id AS partner_id, u.full_name AS partner_name,
+                   u.profile_photo AS partner_photo,
+                   (SELECT COUNT(id) FROM chats WHERE match_id = m.id AND sender_id != %s AND is_read = FALSE) AS unread_count
             FROM matches m
             JOIN users u ON (m.user1_id = u.id OR m.user2_id = u.id)
             WHERE (m.user1_id = %s OR m.user2_id = %s) AND u.id != %s
+            AND u.id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = %s)
+            AND u.id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = %s)
         """
-        cursor.execute(query, (user_id, user_id, user_id))
+        cursor.execute(query, (user_id, user_id, user_id, user_id, user_id, user_id))
         active_matches = cursor.fetchall()
         
         return {"status": "success", "data": active_matches}
@@ -748,6 +769,139 @@ def update_profile_photo(data: ProfilePhotoInput):
         cursor.execute("UPDATE users SET profile_photo = %s WHERE id = %s", (data.photo_base64, data.user_id))
         connection.commit()
         return {"status": "success", "message": "Foto profil berhasil diperbarui!"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 7: NOTIFICATION & UNREAD MESSAGES
+# =====================================================================
+
+@app.get("/api/chat/unread/{user_id}")
+def check_unread_messages(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Hitung jumlah pesan yang is_read = FALSE dan BUKAN dikirim oleh user yang sedang login
+        query = """
+            SELECT COUNT(c.id) AS unread_count
+            FROM chats c
+            JOIN matches m ON c.match_id = m.id
+            WHERE (m.user1_id = %s OR m.user2_id = %s) 
+            AND c.sender_id != %s 
+            AND c.is_read = FALSE
+        """
+        cursor.execute(query, (user_id, user_id, user_id))
+        result = cursor.fetchone()
+        
+        return {"status": "success", "unread_count": result['unread_count']}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@app.put("/api/chat/read/{match_id}/{user_id}")
+def mark_messages_as_read(match_id: int, user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor()
+    try:
+        # Ubah status is_read menjadi TRUE saat user membuka ruang obrolan
+        query = "UPDATE chats SET is_read = TRUE WHERE match_id = %s AND sender_id != %s"
+        cursor.execute(query, (match_id, user_id))
+        connection.commit()
+        
+        return {"status": "success", "message": "Pesan telah dibaca."}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 8: HAPUS CHAT & BLOKIR ACTION
+# =====================================================================
+
+@app.delete("/api/match/delete/{match_id}")
+def delete_match_session(match_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    cursor = connection.cursor()
+    try:
+        # Menghapus data dari tabel matches otomatis menghapus chats karena ON DELETE CASCADE
+        query = "DELETE FROM matches WHERE id = %s"
+        cursor.execute(query, (match_id,))
+        connection.commit()
+        return {"status": "success", "message": "Obrolan berhasil dihapus permanent."}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+class BlockInput(BaseModel):
+    blocker_id: int
+    blocked_id: int
+
+@app.post("/api/user/block")
+def block_user(data: BlockInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    cursor = connection.cursor()
+    try:
+        # 1. Catat ke tabel blocks
+        query_block = "INSERT IGNORE INTO blocks (blocker_id, blocked_id) VALUES (%s, %s)"
+        cursor.execute(query_block, (data.blocker_id, data.blocked_id))
+        
+        # 2. Putus juga hubungan match mereka agar otomatis hilang dari chat list
+        query_delete_match = """
+            DELETE FROM matches 
+            WHERE (user1_id = %s AND user2_id = %s) OR (user2_id = %s AND user1_id = %s)
+        """
+        cursor.execute(query_delete_match, (data.blocker_id, data.blocked_id, data.blocker_id, data.blocked_id))
+        
+        connection.commit()
+        return {"status": "success", "message": "Pengguna berhasil diblokir."}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# =====================================================================
+# CHAPTER 9: SUMMARY EXPLORE SKILLS
+# =====================================================================
+
+@app.get("/api/skills/summary")
+def get_skills_summary():
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Hitung jumlah user unik (CAN) per kategori skill
+        query = """
+            SELECT skill_name, COUNT(DISTINCT user_id) as total_users 
+            FROM user_skills 
+            WHERE skill_type = 'CAN' 
+            GROUP BY skill_name
+            ORDER BY total_users DESC
+        """
+        cursor.execute(query)
+        skills_data = cursor.fetchall()
+        return {"status": "success", "data": skills_data}
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:

@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'profile_screen.dart';
+import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
   final String chatPartnerName;
   final int matchId;
   final int currentUserId;
   final int chatPartnerId;
-  final String initialStatus; // Tambahkan penampung status awal
+  final String initialStatus;
+  final String? chatPartnerPhoto; // Tambahkan penampung status awal
 
   const ChatScreen({
     super.key, 
@@ -15,7 +18,8 @@ class ChatScreen extends StatefulWidget {
     required this.matchId,
     required this.currentUserId,
     required this.chatPartnerId,
-    this.initialStatus = 'MATCHED', // Default ke MATCHED jika tidak dioper
+    this.initialStatus = 'MATCHED',
+    this.chatPartnerPhoto, // Default ke MATCHED jika tidak dioper
   });
 
   @override
@@ -48,8 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     super.dispose();
   }
-
-  void _loadChatHistory() async {
+void _loadChatHistory() async {
     var result = await ApiService.getChatHistory(widget.matchId);
     if (mounted) {
       setState(() {
@@ -64,8 +67,15 @@ class _ChatScreenState extends State<ChatScreen> {
           }).toList();
         }
       });
+      
+      // TAMBAHAN: Tandai pesan langsung sebagai "Telah Dibaca" ke database
+      await ApiService.markMessagesAsRead(
+        matchId: widget.matchId,
+        userId: widget.currentUserId,
+      );
     }
   }
+
   void _checkIfAlreadyReviewed() async {
     var result = await ApiService.checkReviewStatus(
       matchId: widget.matchId,
@@ -78,8 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
   }
-
-  void _refreshChatHistorySilently() async {
+void _refreshChatHistorySilently() async {
     var result = await ApiService.getChatHistory(widget.matchId);
     if (mounted && result['status'] == 'success') {
       List<dynamic> data = result['data'];
@@ -94,10 +103,15 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages = updatedMessages;
         });
+        
+        // TAMBAHAN: Saat ada chat baru masuk dan posisi room lagi aktif dibuka, langsung tandai dibaca
+        ApiService.markMessagesAsRead(
+          matchId: widget.matchId,
+          userId: widget.currentUserId,
+        );
       }
     }
   }
-
   void _sendMessage() async {
     String text = _messageController.text.trim();
     if (text.isNotEmpty) {
@@ -114,8 +128,64 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  
+  // ==========================================
+  // FITUR HAPUS & BLOKIR
+  // ==========================================
+  void _showConfirmDialog(String title, String content, VoidCallback onConfirm) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(content, style: const TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // Tutup dialog konfirmasi
+              onConfirm(); // Jalankan aksi hapus/blokir
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Ya, Yakin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 
+  void _deleteChat() async {
+    setState(() => isLoading = true);
+    var result = await ApiService.deleteMatch(widget.matchId);
+    
+    // PENJAGA: Jika halaman keburu ditutup sebelum proses selesai, hentikan eksekusi kode di bawahnya
+    if (!mounted) return; 
+
+    if (result['status'] == 'success') {
+      Navigator.pop(context); // Keluar dari ruang obrolan
+    } else {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'])));
+    }
+  }
+
+  void _blockUser() async {
+    setState(() => isLoading = true);
+    var result = await ApiService.blockUser(blockerId: widget.currentUserId, blockedId: widget.chatPartnerId);
+    
+    // PENJAGA: Jika halaman keburu ditutup sebelum proses selesai, hentikan eksekusi kode di bawahnya
+    if (!mounted) return;
+
+    if (result['status'] == 'success') {
+      Navigator.pop(context); // Keluar dari ruang obrolan
+    } else {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'])));
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,20 +193,74 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         backgroundColor: Colors.grey[900],
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Row(
-          children: [
-            CircleAvatar(
+        title: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                // Menggunakan ID target (lawan bicara) untuk membuka profilnya
+                builder: (context) => ProfileScreen(currentUserId: widget.chatPartnerId, isEditable: false),
+              ),
+            );
+          },
+          child: Row(
+            mainAxisSize: MainAxisSize.min, // Membatasi area klik hanya sebatas isi konten
+            children: [
+              CircleAvatar(
               backgroundColor: Colors.grey[700],
               radius: 16,
-              child: const Icon(Icons.person, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              widget.chatPartnerName,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-            ),
-          ],
+              // RENDER FOTO JIKA ADA
+              backgroundImage: (widget.chatPartnerPhoto != null && widget.chatPartnerPhoto!.isNotEmpty)
+                  ? MemoryImage(base64Decode(widget.chatPartnerPhoto!.split(',').last))
+                  : null,
+              child: (widget.chatPartnerPhoto == null || widget.chatPartnerPhoto!.isEmpty)
+                  ? const Icon(Icons.person, color: Colors.white, size: 20)
+                  : null,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                widget.chatPartnerName,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.info_outline, color: Colors.grey, size: 16), // Indikator tambahan
+            ],
+          ),
         ),
+        // =======================================================
+        // INI DIA TAMBAHANNYA, DI BAWAH TITLE TAPI MASIH DI DALAM APPBAR
+        // =======================================================
+        actions: [
+          PopupMenuButton<String>(
+            color: Colors.grey[850],
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) {
+              if (value == 'delete') {
+                _showConfirmDialog(
+                  'Hapus Obrolan', 
+                  'Yakin ingin menghapus obrolan ini secara permanen?', 
+                  _deleteChat
+                );
+              } else if (value == 'block') {
+                _showConfirmDialog(
+                  'Blokir Pengguna', 
+                  'Yakin ingin memblokir ${widget.chatPartnerName}? Mereka akan hilang dari daftarmu.', 
+                  _blockUser
+                );
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Text('Hapus Obrolan', style: TextStyle(color: Colors.white)),
+              ),
+              const PopupMenuItem(
+                value: 'block',
+                child: Text('Blokir Pengguna', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -160,8 +284,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  // Komponen Tampilan Workflow State
   // Komponen Tampilan Gamifikasi Leveling Otomatis
   Widget _buildWorkflowBanner() {
     // 1. Hitung total pesan yang ada di dalam ruang obrolan ini

@@ -5,9 +5,11 @@ import 'review_list_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final int currentUserId; // Mewajibkan input ID pengguna saat halaman dipanggil
+  final int currentUserId; 
+  final bool isEditable; // <-- TAMBAHKAN PENANDA INI
 
-  const ProfileScreen({super.key, required this.currentUserId});
+  // Set default isEditable ke false agar aman saat dipanggil dari chat
+  const ProfileScreen({super.key, required this.currentUserId, this.isEditable = false}); 
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -40,18 +42,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'MY PROFILE',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-          ),
-        ),
-        centerTitle: true,
+  backgroundColor: Colors.black,
+  elevation: 0,
+  iconTheme: const IconThemeData(color: Colors.white),
+  title: Text( // Hapus 'const' di area widget text dinamis ini
+    widget.isEditable ? 'MY PROFILE' : 'USER PROFILE',
+    style: const TextStyle(
+      color: Colors.white,
+      fontWeight: FontWeight.bold,
+      letterSpacing: 2,
+    ),
+  ),
+  centerTitle: true,
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
@@ -169,6 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 40),
 
                       // Tombol Edit Profil
+                      if (widget.isEditable)
                       SizedBox(
                         width: double.infinity,
                         height: 50,
