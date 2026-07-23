@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import '../services/api_service.dart';
 import 'profile_screen.dart';
 import 'dart:convert';
@@ -10,37 +12,47 @@ class ChatScreen extends StatefulWidget {
   final int currentUserId;
   final int chatPartnerId;
   final String initialStatus;
-  final String? chatPartnerPhoto; // Tambahkan penampung status awal
+  final String? chatPartnerPhoto;
 
   const ChatScreen({
-    super.key, 
+    super.key,
     required this.chatPartnerName,
     required this.matchId,
     required this.currentUserId,
     required this.chatPartnerId,
     this.initialStatus = 'MATCHED',
-    this.chatPartnerPhoto, // Default ke MATCHED jika tidak dioper
+    this.chatPartnerPhoto,
   });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   List<Map<String, dynamic>> _messages = [];
   bool isLoading = true;
   Timer? _chatTimer;
-  
- 
   bool _hasReviewed = false;
+
+  // Kontrol animasi gelombang air pada indikator level (berjalan terus)
+  late final AnimationController _waveController;
+  // Key untuk melacak posisi ikon level di layar (untuk animasi percikan)
+  final GlobalKey _levelIconKey = GlobalKey();
+  // Menyimpan level terakhir untuk mendeteksi kenaikan level
+  String? _lastLevelText;
 
   @override
   void initState() {
     super.initState();
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
     _checkIfAlreadyReviewed();
     _loadChatHistory();
-    
+
     _chatTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       _refreshChatHistorySilently();
     });
@@ -50,9 +62,200 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _chatTimer?.cancel();
     _messageController.dispose();
+    _waveController.dispose();
     super.dispose();
   }
-void _loadChatHistory() async {
+
+  // Info level (warna, ikon, teks, persentase isi) berdasarkan jumlah chat.
+  // Logika ambang batas & rumus fillPercentage TIDAK diubah dari versi asli.
+  Map<String, dynamic> _levelInfoForCount(int count) {
+    if (count >= 30) {
+      return {
+        'text': 'Partner',
+        'color': const Color(0xFFF29C11),
+        'icon': Icons.emoji_events_rounded,
+        'fill': 1.0,
+      };
+    } else if (count >= 10) {
+      return {
+        'text': 'Collaborate',
+        'color': const Color(0xFF26B49A),
+        'icon': Icons.groups_rounded,
+        'fill': (count - 10) / 20.0,
+      };
+    } else {
+      return {
+        'text': 'Explorer',
+        'color': const Color(0xFF1A73E8),
+        'icon': Icons.explore_outlined,
+        'fill': count / 10.0,
+      };
+    }
+  }
+
+  // Dipanggil setiap kali _messages berubah untuk mendeteksi kenaikan level
+  // dan memicu animasi percikan / perayaan Partner. silent=true dipakai saat
+  // load pertama kali agar tidak memicu animasi palsu.
+  void _onMessagesUpdated({bool silent = false}) {
+    final info = _levelInfoForCount(_messages.length);
+    final newLevelText = info['text'] as String;
+
+    if (!silent && _lastLevelText != null && newLevelText != _lastLevelText) {
+      _showLevelUpSparkle(info['color'] as Color);
+      if (newLevelText == 'Partner') {
+        _showPartnerCelebration();
+      }
+    }
+    _lastLevelText = newLevelText;
+  }
+
+  // Animasi percikan kembang api kecil di sekitar ikon level saat naik level
+  void _showLevelUpSparkle(Color color) {
+    if (!mounted) return;
+    final renderBox = _levelIconKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final position = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+    final center = position + Offset(size.width / 2, size.height / 2);
+
+    late OverlayEntry entry;
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+
+    entry = OverlayEntry(
+      builder: (context) {
+        return AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final t = controller.value;
+            return IgnorePointer(
+              child: Stack(
+                children: List.generate(8, (i) {
+                  final angle = (i / 8) * 2 * pi;
+                  final dist = 30 * Curves.easeOut.transform(t);
+                  return Positioned(
+                    left: center.dx + cos(angle) * dist - 4,
+                    top: center.dy + sin(angle) * dist - 4,
+                    child: Opacity(
+                      opacity: (1 - t).clamp(0.0, 1.0),
+                      child: Icon(
+                        Icons.auto_awesome,
+                        color: color,
+                        size: 8 + 4 * (1 - t),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    Overlay.of(context).insert(entry);
+    controller.forward().whenComplete(() {
+      entry.remove();
+      controller.dispose();
+    });
+  }
+
+  // Animasi dramatis di tengah layar saat level Partner tercapai
+  void _showPartnerCelebration() {
+    if (!mounted) return;
+    late OverlayEntry entry;
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+
+    entry = OverlayEntry(
+      builder: (context) {
+        final screenSize = MediaQuery.of(context).size;
+        return AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final t = controller.value;
+            double opacity;
+            if (t < 0.15) {
+              opacity = t / 0.15;
+            } else if (t > 0.8) {
+              opacity = (1 - t) / 0.2;
+            } else {
+              opacity = 1.0;
+            }
+            opacity = opacity.clamp(0.0, 1.0);
+            final scale = t < 0.25
+                ? Curves.elasticOut.transform(t / 0.25).clamp(0.0, 1.2)
+                : 1.0;
+
+            return IgnorePointer(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Container(color: Colors.black.withValues(alpha: 0.25 * opacity)),
+                  ),
+                  ...List.generate(10, (i) {
+                    final angle = (i / 10) * 2 * pi;
+                    final dist = 130 * Curves.easeOut.transform(t.clamp(0.0, 1.0));
+                    return Positioned(
+                      left: screenSize.width / 2 + cos(angle) * dist - 6,
+                      top: screenSize.height / 2 + sin(angle) * dist - 6,
+                      child: Opacity(
+                        opacity: (1 - t).clamp(0.0, 1.0),
+                        child: const Icon(Icons.star_rounded, color: Color(0xFFF29C11), size: 14),
+                      ),
+                    );
+                  }),
+                  Center(
+                    child: Opacity(
+                      opacity: opacity,
+                      child: Transform.scale(
+                        scale: scale,
+                        child: SizedBox(
+                          width: 200,
+                          height: 200,
+                          child: Lottie.asset(
+                            'assets/images/badge.json',
+                            repeat: false,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    Overlay.of(context).insert(entry);
+    controller.forward().whenComplete(() {
+      entry.remove();
+      controller.dispose();
+    });
+  }
+
+  String _formatTime(String? dateString) {
+    if (dateString == null) {
+      final now = DateTime.now();
+      return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    }
+    try {
+      DateTime parsed = DateTime.parse(dateString).toLocal();
+      return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      final now = DateTime.now();
+      return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
+  void _loadChatHistory() async {
     var result = await ApiService.getChatHistory(widget.matchId);
     if (mounted) {
       setState(() {
@@ -63,12 +266,13 @@ void _loadChatHistory() async {
             return {
               'text': msg['message'],
               'isMe': msg['sender_id'] == widget.currentUserId,
+              'time': _formatTime(msg['created_at']),
             };
           }).toList();
         }
       });
-      
-      // TAMBAHAN: Tandai pesan langsung sebagai "Telah Dibaca" ke database
+      _onMessagesUpdated(silent: true);
+
       await ApiService.markMessagesAsRead(
         matchId: widget.matchId,
         userId: widget.currentUserId,
@@ -81,14 +285,15 @@ void _loadChatHistory() async {
       matchId: widget.matchId,
       reviewerId: widget.currentUserId,
     );
-    
+
     if (mounted && result['status'] == 'success') {
       setState(() {
-        _hasReviewed = result['has_reviewed']; // Timpa status lokal dengan data asli dari database
+        _hasReviewed = result['has_reviewed'];
       });
     }
   }
-void _refreshChatHistorySilently() async {
+
+  void _refreshChatHistorySilently() async {
     var result = await ApiService.getChatHistory(widget.matchId);
     if (mounted && result['status'] == 'success') {
       List<dynamic> data = result['data'];
@@ -96,6 +301,7 @@ void _refreshChatHistorySilently() async {
         return {
           'text': msg['message'],
           'isMe': msg['sender_id'] == widget.currentUserId,
+          'time': _formatTime(msg['created_at']),
         };
       }).toList();
 
@@ -103,8 +309,8 @@ void _refreshChatHistorySilently() async {
         setState(() {
           _messages = updatedMessages;
         });
-        
-        // TAMBAHAN: Saat ada chat baru masuk dan posisi room lagi aktif dibuka, langsung tandai dibaca
+        _onMessagesUpdated();
+
         ApiService.markMessagesAsRead(
           matchId: widget.matchId,
           userId: widget.currentUserId,
@@ -112,13 +318,19 @@ void _refreshChatHistorySilently() async {
       }
     }
   }
+
   void _sendMessage() async {
     String text = _messageController.text.trim();
     if (text.isNotEmpty) {
       setState(() {
-        _messages.add({'text': text, 'isMe': true});
+        _messages.add({
+          'text': text, 
+          'isMe': true,
+          'time': _formatTime(null)
+        });
         _messageController.clear();
       });
+      _onMessagesUpdated();
 
       await ApiService.sendChatMessage(
         matchId: widget.matchId,
@@ -128,16 +340,13 @@ void _refreshChatHistorySilently() async {
     }
   }
 
-  // ==========================================
-  // FITUR HAPUS & BLOKIR
-  // ==========================================
   void _showConfirmDialog(String title, String content, VoidCallback onConfirm) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text(content, style: const TextStyle(color: Colors.grey)),
+        backgroundColor: Colors.white,
+        title: Text(title, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        content: Text(content, style: const TextStyle(color: Colors.black87)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -145,8 +354,8 @@ void _refreshChatHistorySilently() async {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // Tutup dialog konfirmasi
-              onConfirm(); // Jalankan aksi hapus/blokir
+              Navigator.pop(context);
+              onConfirm();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Ya, Yakin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -160,11 +369,10 @@ void _refreshChatHistorySilently() async {
     setState(() => isLoading = true);
     var result = await ApiService.deleteMatch(widget.matchId);
     
-    // PENJAGA: Jika halaman keburu ditutup sebelum proses selesai, hentikan eksekusi kode di bawahnya
     if (!mounted) return; 
 
     if (result['status'] == 'success') {
-      Navigator.pop(context); // Keluar dari ruang obrolan
+      Navigator.pop(context);
     } else {
       setState(() => isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'])));
@@ -175,107 +383,127 @@ void _refreshChatHistorySilently() async {
     setState(() => isLoading = true);
     var result = await ApiService.blockUser(blockerId: widget.currentUserId, blockedId: widget.chatPartnerId);
     
-    // PENJAGA: Jika halaman keburu ditutup sebelum proses selesai, hentikan eksekusi kode di bawahnya
     if (!mounted) return;
 
     if (result['status'] == 'success') {
-      Navigator.pop(context); // Keluar dari ruang obrolan
+      Navigator.pop(context);
     } else {
       setState(() => isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'])));
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: Colors.grey[900],
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        iconTheme: const IconThemeData(color: Colors.black87),
         title: GestureDetector(
           onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
-                // Menggunakan ID target (lawan bicara) untuk membuka profilnya
                 builder: (context) => ProfileScreen(currentUserId: widget.chatPartnerId, isEditable: false),
               ),
             );
           },
           child: Row(
-            mainAxisSize: MainAxisSize.min, // Membatasi area klik hanya sebatas isi konten
             children: [
               CircleAvatar(
-              backgroundColor: Colors.grey[700],
-              radius: 16,
-              // RENDER FOTO JIKA ADA
-              backgroundImage: (widget.chatPartnerPhoto != null && widget.chatPartnerPhoto!.isNotEmpty)
-                  ? MemoryImage(base64Decode(widget.chatPartnerPhoto!.split(',').last))
-                  : null,
-              child: (widget.chatPartnerPhoto == null || widget.chatPartnerPhoto!.isEmpty)
-                  ? const Icon(Icons.person, color: Colors.white, size: 20)
-                  : null,
+                backgroundColor: Colors.grey[200],
+                radius: 18,
+                backgroundImage: (widget.chatPartnerPhoto != null && widget.chatPartnerPhoto!.isNotEmpty)
+                    ? MemoryImage(base64Decode(widget.chatPartnerPhoto!.split(',').last))
+                    : null,
+                child: (widget.chatPartnerPhoto == null || widget.chatPartnerPhoto!.isEmpty)
+                    ? const Icon(Icons.person, color: Colors.grey, size: 20)
+                    : null,
               ),
               const SizedBox(width: 12),
-              Text(
-                widget.chatPartnerName,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.chatPartnerName,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        // Tampil jika level partner tercapai & belum direview
+                        if (_messages.length >= 30 && !_hasReviewed) ...[
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _showReviewDialog,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFF1A73E8), width: 1),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.star_border_rounded, size: 13, color: Color(0xFF1A73E8)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Beri Penilaian',
+                                    style: TextStyle(color: Color(0xFF1A73E8), fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const Text(
+                      'Online',
+                      style: TextStyle(color: Colors.green, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 6),
-              const Icon(Icons.info_outline, color: Colors.grey, size: 16), // Indikator tambahan
             ],
           ),
         ),
-        // =======================================================
-        // INI DIA TAMBAHANNYA, DI BAWAH TITLE TAPI MASIH DI DALAM APPBAR
-        // =======================================================
         actions: [
           PopupMenuButton<String>(
-            color: Colors.grey[850],
-            icon: const Icon(Icons.more_vert, color: Colors.white),
+            color: Colors.white,
+            icon: const Icon(Icons.more_horiz, color: Colors.black87),
             onSelected: (value) {
               if (value == 'delete') {
-                _showConfirmDialog(
-                  'Hapus Obrolan', 
-                  'Yakin ingin menghapus obrolan ini secara permanen?', 
-                  _deleteChat
-                );
+                _showConfirmDialog('Hapus Obrolan', 'Yakin ingin menghapus obrolan ini secara permanen?', _deleteChat);
               } else if (value == 'block') {
-                _showConfirmDialog(
-                  'Blokir Pengguna', 
-                  'Yakin ingin memblokir ${widget.chatPartnerName}? Mereka akan hilang dari daftarmu.', 
-                  _blockUser
-                );
+                _showConfirmDialog('Blokir Pengguna', 'Yakin ingin memblokir ${widget.chatPartnerName}? Mereka akan hilang dari daftarmu.', _blockUser);
               }
             },
             itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Hapus Obrolan', style: TextStyle(color: Colors.white)),
-              ),
-              const PopupMenuItem(
-                value: 'block',
-                child: Text('Blokir Pengguna', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              ),
+              const PopupMenuItem(value: 'delete', child: Text('Hapus Obrolan', style: TextStyle(color: Colors.black87))),
+              const PopupMenuItem(value: 'block', child: Text('Blokir Pengguna', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
-          // ==== WIDGET WORKFLOW STATE BARU ====
-          _buildWorkflowBanner(),
-          
           Expanded(
             child: isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                ? const Center(child: CircularProgressIndicator(color: Colors.blue))
                 : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      return _buildChatBubble(message['text'], message['isMe']);
+                      return _buildChatBubble(message['text'], message['isMe'], message['time']);
                     },
                   ),
           ),
@@ -284,251 +512,346 @@ void _refreshChatHistorySilently() async {
       ),
     );
   }
-  // Komponen Tampilan Gamifikasi Leveling Otomatis
-  Widget _buildWorkflowBanner() {
-    // 1. Hitung total pesan yang ada di dalam ruang obrolan ini
-    int chatCount = _messages.length;
-    
-    String currentLevel = 'CONNECT';
-    Color bannerColor = Colors.blueGrey[900]!;
-    double progress = 0.0;
-    int nextTarget = 10;
 
-    // 2. Logika Penentuan Level Berdasarkan Jumlah Chat
-    if (chatCount >= 30) {
-      // Level Tertinggi: PARTNER (Lebih dari 30 pesan)
-      currentLevel = 'PARTNER';
-      bannerColor = Colors.amber[800]!; // Warna emas/kuning
-      progress = 1.0; 
-      nextTarget = chatCount; 
-    } else if (chatCount >= 10) {
-      // Level Menengah: COLLABORATOR (10 sampai 29 pesan)
-      currentLevel = 'COLLABORATOR';
-      bannerColor = Colors.green[700]!; 
-      progress = (chatCount - 10) / 20; // 20 adalah sisa target menuju 30
-      nextTarget = 30;
-    } else {
-      // Level Awal: CONNECT (0 sampai 9 pesan)
-      currentLevel = 'CONNECT';
-      bannerColor = Colors.blue[800]!;
-      progress = chatCount / 10;
-      nextTarget = 10;
-    }
+  // Desain progres level: lingkaran terisi air beranimasi (gelombang berjalan terus),
+  // dengan ikon & label berwarna sesuai level. Rumus fillPercentage & ambang batas
+  // level TIDAK diubah dari versi asli — hanya cara menampilkannya yang beranimasi.
+  Widget _buildLevelProgress() {
+    int count = _messages.length;
+    final info = _levelInfoForCount(count);
+    final double fillPercentage = info['fill'] as double;
+    final Color levelColor = info['color'] as Color;
+    final String levelText = info['text'] as String;
+    final IconData levelIcon = info['icon'] as IconData;
 
-    return Container(
-      width: double.infinity,
-      color: bannerColor,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Level: $currentLevel',
-                style: const TextStyle(
-                  color: Colors.white, 
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 14,
-                  letterSpacing: 1,
-                ),
-              ),
-              // GANTI BLOK INI:
-              chatCount >= 30 
-                  ? (_hasReviewed // Cek apakah ulasan sudah dikirim
-                      ? const Text('Ulasan Selesai ✅', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))
-                      : ElevatedButton(
-                          onPressed: _showReviewDialog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            minimumSize: Size.zero,
-                          ),
-                          child: const Text('Beri Nilai Partner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        ))
-                  : Text(
-                      '$chatCount / $nextTarget Messages',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          key: _levelIconKey,
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: levelColor.withValues(alpha: 0.5), width: 2),
+            color: Colors.white,
           ),
-          const SizedBox(height: 10),
-          // Progress Bar untuk visualisasi pencapaian
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: Colors.black38,
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+          child: ClipOval(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(color: Colors.transparent),
+                // Air yang naik & bergelombang secara halus mengikuti progres chat
+                Positioned.fill(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: fillPercentage.clamp(0.0, 1.0)),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, animatedFill, _) {
+                      return AnimatedBuilder(
+                        animation: _waveController,
+                        builder: (context, _) {
+                          return CustomPaint(
+                            painter: _WaterWavePainter(
+                              fillLevel: animatedFill,
+                              waveOffset: _waveController.value,
+                              color: levelColor,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                Icon(
+                  levelIcon,
+                  size: 14,
+                  color: fillPercentage >= 0.55 ? Colors.white : levelColor,
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          levelText,
+          style: TextStyle(
+            fontSize: 8,
+            color: levelColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildMessageInput() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: Colors.grey[900],
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+      ),
       child: Row(
         children: [
+          // Panggil fungsi widget indikator level baru di sini
+          _buildLevelProgress(), 
+          const SizedBox(width: 12),
           Expanded(
-            child: TextField(
-              controller: _messageController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Type a message...',
-                hintStyle: const TextStyle(color: Colors.grey),
-                filled: true,
-                fillColor: Colors.black,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: const InputDecoration(
+                        hintText: 'Ketik pesan...',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Icon(Icons.emoji_emotions_outlined, color: Colors.grey[500]),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: Colors.white,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.black),
-              onPressed: _sendMessage,
-            ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _sendMessage,
+            child: Icon(Icons.send_outlined, color: Colors.grey[600], size: 28),
           ),
         ],
       ),
     );
   }
 
+  // Label rating dinamis sesuai jumlah bintang yang dipilih
+  String _ratingLabel(int rating) {
+    switch (rating) {
+      case 1:
+        return 'Sangat Buruk';
+      case 2:
+        return 'Buruk';
+      case 3:
+        return 'Cukup';
+      case 4:
+        return 'Baik';
+      case 5:
+        return 'Sangat Baik';
+      default:
+        return '';
+    }
+  }
+
+  // Desain dialog "Beri Penilaian" mengikuti tampilan kartu vertikal pada referensi
   void _showReviewDialog() {
-    int selectedRating = 5; // Default bintang 5
+    int selectedRating = 5;
     TextEditingController reviewController = TextEditingController();
     bool isSubmitting = false;
 
     showDialog(
       context: context,
-      barrierDismissible: false, // User tidak bisa asal tap di luar untuk menutup
+      barrierDismissible: false,
       builder: (context) {
-        return StatefulBuilder( // StatefulBuilder agar dialog bisa update state (ubah bintang)
+        return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: Colors.grey[900],
-              title: const Text(
-                'Rate Your Partner 🌟',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Kalian telah mencapai level PARTNER! Bagaimana pengalaman belajarmu dengan ${widget.chatPartnerName}?',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 20),
-                  // Bintang Rating Interaktif
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          index < selectedRating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 32,
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Badge bintang di bagian atas
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF1A73E8).withValues(alpha: 0.08),
                         ),
-                        onPressed: () {
-                          setDialogState(() {
-                            selectedRating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: reviewController,
-                    maxLines: 3,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Tulis ulasanmu di sini...',
-                      hintStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: Colors.black,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                        child: const Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFF1A73E8),
+                          size: 34,
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Nanti Saja', style: TextStyle(color: Colors.grey)),
-                ),
-                ElevatedButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () async {
-                          setDialogState(() => isSubmitting = true);
-                          
-                          // Asumsi ID lawan adalah ID yang BUKAN currentUserId
-                          // Dalam implementasi nyata, kamu mungkin butuh pass ID lawan secara eksplisit.
-                          // Untuk sekarang, kita anggap ID bisa ditarik jika diperlukan,
-                          // Tapi idealnya kamu menambahkan partnerId di constructor ChatScreen.
-                          
-                          // KARENA KITA BUTUH ID LAWAN: Mari kita buat skenario sementara (misal ID 6 jika kamu 2).
-                          // Idealnya, perbarui ChatListScreen agar mengoper partnerId.
-                          
-                          var result = await ApiService.submitReview(
-                            matchId: widget.matchId,
-                            reviewerId: widget.currentUserId,
-                            reviewedUserId: widget.chatPartnerId,
-                            rating: selectedRating,
-                            reviewText: reviewController.text.trim(),
-                          );
-
-                          if (!context.mounted) return;
-
-                          setDialogState(() => isSubmitting = false);
-
-                          
-                            if (result['status'] == 'success') {
-                            Navigator.pop(context); // Tutup dialog
-                            
-                            // HILANGKAN TOMBOL DI BANNER
-                            setState(() {
-                              _hasReviewed = true; 
-                            });
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(result['message'])),
-                            );
-                          } else {
-                            // Jika API menolak karena sebelumnya sudah pernah kirim ulasan
-                            if (result['message'] == "Kamu sudah memberikan ulasan untuk sesi ini.") {
-                              Navigator.pop(context);
-                              setState(() {
-                                _hasReviewed = true; // Sembunyikan tombolnya juga
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Beri Penilaian',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 20),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Bagaimana pengalamanmu bertukar skill bersama ${widget.chatPartnerName}?',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.black54, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(5, (index) {
+                          return GestureDetector(
+                            onTap: () {
+                              setDialogState(() {
+                                selectedRating = index + 1;
                               });
-                            }
-                            
-                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(result['message'])),
-                            );
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                  child: isSubmitting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                      : const Text('Kirim Ulasan', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(
+                                index < selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
+                                color: const Color(0xFFF29C11),
+                                size: 34,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _ratingLabel(selectedRating),
+                        style: const TextStyle(color: Color(0xFF1A73E8), fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: reviewController,
+                        maxLines: 3,
+                        style: const TextStyle(color: Colors.black87),
+                        decoration: InputDecoration(
+                          hintText: 'Tulis ulasanmu di sini...',
+                          hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                          filled: true,
+                          fillColor: const Color(0xFFF8F9FA),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFEEEEEE)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFEEEEEE)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Kotak informasi: ulasan bersifat publik (kebalikan dari desain acuan)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.public, size: 18, color: Color(0xFF1A73E8)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Ulasan ini akan dipublikasikan',
+                                    style: TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Ulasanmu akan dapat dilihat oleh pengguna lain di Skill Swap.',
+                                    style: TextStyle(color: Colors.black54, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFEEEEEE)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text('Batal', style: TextStyle(color: Color(0xFF1A73E8), fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isSubmitting
+                                  ? null
+                                  : () async {
+                                      setDialogState(() => isSubmitting = true);
+
+                                      var result = await ApiService.submitReview(
+                                        matchId: widget.matchId,
+                                        reviewerId: widget.currentUserId,
+                                        reviewedUserId: widget.chatPartnerId,
+                                        rating: selectedRating,
+                                        reviewText: reviewController.text.trim(),
+                                      );
+
+                                      if (!context.mounted) return;
+
+                                      setDialogState(() => isSubmitting = false);
+
+                                      if (result['status'] == 'success') {
+                                        Navigator.pop(context);
+                                        setState(() {
+                                          _hasReviewed = true;
+                                        });
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(result['message'])),
+                                        );
+                                      } else {
+                                        if (result['message'] == "Kamu sudah memberikan ulasan untuk sesi ini.") {
+                                          Navigator.pop(context);
+                                          setState(() {
+                                            _hasReviewed = true;
+                                          });
+                                        }
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(result['message'])),
+                                        );
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1A73E8),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: isSubmitting
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('Kirim Penilaian', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             );
           },
         );
@@ -536,29 +859,85 @@ void _refreshChatHistorySilently() async {
     );
   }
 
-  Widget _buildChatBubble(String text, bool isMe) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isMe ? Colors.white : Colors.grey[800],
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 16),
+  Widget _buildChatBubble(String text, bool isMe, String time) {
+    return Column(
+      crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isMe ? const Color(0xFF1A73E8) : const Color(0xFFF0F4F9),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isMe ? 16 : 0),
+              bottomRight: Radius.circular(isMe ? 0 : 16),
+            ),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isMe ? Colors.white : Colors.black87,
+              fontSize: 14,
+            ),
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isMe ? Colors.black : Colors.white,
-            fontSize: 14,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            time,
+            style: const TextStyle(
+              color: Colors.black38,
+              fontSize: 10,
+            ),
           ),
         ),
-      ),
+      ],
     );
+  }
+}
+
+// Menggambar "air" yang bergelombang mengisi lingkaran indikator level.
+// fillLevel: 0.0 - 1.0 (seberapa penuh), waveOffset: 0.0 - 1.0 (fase animasi berjalan)
+class _WaterWavePainter extends CustomPainter {
+  final double fillLevel;
+  final double waveOffset;
+  final Color color;
+
+  _WaterWavePainter({
+    required this.fillLevel,
+    required this.waveOffset,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fillLevel <= 0) return;
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    const waveHeight = 1.6;
+    final baseY = size.height * (1 - fillLevel);
+
+    final path = Path()..moveTo(0, size.height);
+    path.lineTo(0, baseY);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y = baseY + sin((x / size.width * 2 * pi) + (waveOffset * 2 * pi)) * waveHeight;
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaterWavePainter oldDelegate) {
+    return oldDelegate.fillLevel != fillLevel ||
+        oldDelegate.waveOffset != waveOffset ||
+        oldDelegate.color != color;
   }
 }

@@ -254,6 +254,27 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
     }
   }
 
+  // 12b. Service untuk Update Latar Belakang Profil
+  static Future<Map<String, dynamic>> updateBackgroundPhoto({
+    required int userId,
+    required String photoBase64,
+  }) async {
+    final url = Uri.parse('$baseUrl/profile/background');
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "photo_base64": photoBase64,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal update background: $e"};
+    }
+  }
+
   // 13. Service untuk Update Skills
   static Future<Map<String, dynamic>> saveUserSkills({
     required int userId,

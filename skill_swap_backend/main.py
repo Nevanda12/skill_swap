@@ -128,6 +128,13 @@ def create_tables():
         # Abaikan error jika kolom sudah ada (Error 1060: Duplicate column name)
         pass
 
+    # Tambahkan kolom latar belakang profil jika belum ada
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN background_photo LONGTEXT;")
+    except mysql.connector.Error as err:
+        # Abaikan error jika kolom sudah ada (Error 1060: Duplicate column name)
+        pass
+
     try:
         cursor.execute("ALTER TABLE chats ADD COLUMN is_read BOOLEAN DEFAULT FALSE;")
     except mysql.connector.Error:
@@ -589,16 +596,25 @@ def get_active_matches(user_id: int):
             SELECT m.id AS match_id, m.status,
                    u.id AS partner_id, u.full_name AS partner_name,
                    u.profile_photo AS partner_photo,
-                   (SELECT COUNT(id) FROM chats WHERE match_id = m.id AND sender_id != %s AND is_read = FALSE) AS unread_count
+                   (SELECT COUNT(id) FROM chats WHERE match_id = m.id AND sender_id != %s AND is_read = FALSE) AS unread_count,
+                   (SELECT COUNT(id) FROM chats WHERE match_id = m.id) AS message_count,
+                   (SELECT message FROM chats WHERE match_id = m.id ORDER BY timestamp DESC LIMIT 1) AS last_message,
+                   (SELECT timestamp FROM chats WHERE match_id = m.id ORDER BY timestamp DESC LIMIT 1) AS last_message_time
             FROM matches m
             JOIN users u ON (m.user1_id = u.id OR m.user2_id = u.id)
             WHERE (m.user1_id = %s OR m.user2_id = %s) AND u.id != %s
             AND u.id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = %s)
             AND u.id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = %s)
+            ORDER BY (last_message_time IS NULL) ASC, last_message_time DESC
         """
         cursor.execute(query, (user_id, user_id, user_id, user_id, user_id, user_id))
         active_matches = cursor.fetchall()
-        
+
+        # Ubah timestamp jadi string ISO agar bisa di-decode dengan aman di Flutter
+        for row in active_matches:
+            if row.get('last_message_time'):
+                row['last_message_time'] = row['last_message_time'].isoformat()
+
         return {"status": "success", "data": active_matches}
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
@@ -694,9 +710,10 @@ def get_user_profile(user_id: int):
     try:
         # 1. Ambil data dasar user beserta rata-rata rating
         query_user = """
-            SELECT u.id, u.full_name, u.email, u.profile_photo,
+            SELECT u.id, u.full_name, u.email, u.profile_photo, u.background_photo,
                    COALESCE(AVG(r.rating), 0) as average_rating,
-                   COUNT(r.id) as total_reviews
+                   COUNT(r.id) as total_reviews,
+                   (SELECT COUNT(*) FROM matches WHERE user1_id = u.id OR user2_id = u.id) as total_matches
             FROM users u
             LEFT JOIN reviews r ON u.id = r.reviewed_user_id
             WHERE u.id = %s
@@ -727,7 +744,7 @@ def get_user_profile(user_id: int):
     finally:
         cursor.close()
         connection.close()
-
+        
 @app.get("/api/profile/reviews/{user_id}")
 def get_user_reviews_list(user_id: int):
     connection = get_db_connection()
@@ -769,6 +786,27 @@ def update_profile_photo(data: ProfilePhotoInput):
         cursor.execute("UPDATE users SET profile_photo = %s WHERE id = %s", (data.photo_base64, data.user_id))
         connection.commit()
         return {"status": "success", "message": "Foto profil berhasil diperbarui!"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+class BackgroundPhotoInput(BaseModel):
+    user_id: int
+    photo_base64: str
+
+@app.put("/api/profile/background")
+def update_background_photo(data: BackgroundPhotoInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE users SET background_photo = %s WHERE id = %s", (data.photo_base64, data.user_id))
+        connection.commit()
+        return {"status": "success", "message": "Latar belakang profil berhasil diperbarui!"}
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
