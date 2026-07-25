@@ -66,10 +66,11 @@ Tim Skill Swap
 def get_db_connection():
     try:
         connection = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            password="",
-            database="skill_swap"
+            host=os.environ.get("DB_HOST", "localhost"),
+            user=os.environ.get("DB_USER", "root"),
+            password=os.environ.get("DB_PASSWORD", ""),
+            database=os.environ.get("DB_NAME", "skill_swap"),
+            port=int(os.environ.get("DB_PORT", "3306")),
         )
         return connection
     except mysql.connector.Error as err:

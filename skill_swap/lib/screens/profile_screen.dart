@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
@@ -118,6 +119,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _shareProfile() async {
+    if (userData == null) return;
+    final String name = userData!['full_name'] ?? 'Pengguna';
+    final String shareText =
+        'Lihat profil "$name" di Skill Swap! Yuk saling tukar skill di aplikasi Skill Swap.';
+
+    await Clipboard.setData(ClipboardData(text: shareText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link profil disalin ke clipboard')),
+    );
+  }
+
   // ===================== FOLLOW & CHAT (profil user lain) =====================
 
   void _toggleFollow() async {
@@ -198,14 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _addGalleryPhoto() async {
     if (!_isOwnProfile) return; // Hanya pemilik profil yang boleh menambah.
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-      // maxWidth/maxHeight hanya membatasi ukuran FILE (skala turun proporsional),
-      // proporsi/orientasi asli gambar (potrait, landscape, persegi) tetap dipertahankan.
-      maxWidth: 1600,
-      maxHeight: 1600,
-    );
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (pickedFile == null) return;
 
     final bytes = await File(pickedFile.path).readAsBytes();
@@ -387,9 +394,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           if (_isOwnProfile)
             IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white),
-              tooltip: 'Edit Profil',
-              onPressed: isLoading ? null : _goToEdit,
+              icon: const Icon(Icons.ios_share, color: Colors.white),
+              tooltip: 'Bagikan Profil',
+              onPressed: isLoading ? null : _shareProfile,
             ),
         ],
       ),

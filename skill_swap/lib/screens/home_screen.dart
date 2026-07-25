@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import 'match_screen.dart';
 import '../services/api_service.dart';
 import 'explore_screen.dart';
@@ -193,9 +194,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF2CB69D)))
           : discoverUsers.isEmpty
               ? Center(
-                  child: Text(
-                    emptyMessage.isNotEmpty ? emptyMessage : 'Tidak ada lagi pengguna.',
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Lottie.asset(
+                        'assets/images/planet.json',
+                        width: 200,
+                        height: 200,
+                      ),
+                      Text(
+                        emptyMessage.isNotEmpty ? emptyMessage : 'Tidak ada lagi pengguna.',
+                        style: const TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    ],
                   ),
                 )
               : Stack(
