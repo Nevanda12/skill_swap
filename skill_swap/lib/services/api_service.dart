@@ -551,7 +551,15 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"user_id": userId, "photo_base64": photoBase64}),
       );
-      return jsonDecode(response.body);
+      var decoded = jsonDecode(response.body);
+      // FastAPI mengirim error bawaan dalam format {"detail": "..."}, bukan format
+      // {"status": "error", "message": "..."} yang biasa dipakai app ini. Kalau tidak
+      // dipetakan, pesan error aslinya (mis. "Data too long"/limit database) hilang
+      // dan yang tampil di UI cuma teks fallback generik.
+      if (decoded is Map && decoded.containsKey('detail') && !decoded.containsKey('status')) {
+        return {"status": "error", "message": decoded['detail'].toString()};
+      }
+      return decoded;
     } catch (e) {
       return {"status": "error", "message": "Gagal menambah foto: $e"};
     }
