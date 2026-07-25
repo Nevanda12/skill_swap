@@ -125,11 +125,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
       elevation: 0.5,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => Navigator.pop(context), // Fungsi kembali ke Home
-      ),
-      titleSpacing: 0,
+      titleSpacing: 20,
       title: const Text(
         'Message',
         style: TextStyle(

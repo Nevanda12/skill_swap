@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart'; // Pastikan path ini benar sesuai struktur foldermu
+import 'home_screen.dart';
+import '../services/session_service.dart';
 import 'package:lottie/lottie.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -10,10 +12,53 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  // Fungsi timer dihapus agar user bisa menekan tombol Get Started secara manual
+  // true selama proses pengecekan sesi login berlangsung
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingSession();
+  }
+
+  // Cek apakah ada sesi login tersimpan di HP. Kalau ada, langsung
+  // lompat ke HomeScreen tanpa menampilkan tombol "Get Started".
+  Future<void> _checkExistingSession() async {
+    final userId = await SessionService.getUserId();
+
+    if (!mounted) return;
+
+    if (userId != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen(userId: userId)),
+      );
+    } else {
+      setState(() => _checkingSession = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Selama masih mengecek sesi, tampilkan layar kosong bergradasi
+    // (menghindari kedipan/flash tampilan splash sebelum pindah ke Home)
+    if (_checkingSession) {
+      return const Scaffold(
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [Color(0xFF041C44), Color(0xFF0A58CA)],
+            ),
+          ),
+          child: Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       // Hapus backgroundColor hitam, ganti dengan body ber-gradient
       body: Container(

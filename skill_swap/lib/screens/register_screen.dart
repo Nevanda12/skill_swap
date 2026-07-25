@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart'; // Memanggil jembatan API kita
 import 'login_screen.dart'; // Untuk kembali ke login setelah berhasil daftar
+import 'otp_verification_screen.dart'; // Halaman verifikasi kode OTP
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -49,13 +50,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // Evaluasi hasil dari backend
     if (result['status'] == 'success') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Registrasi Berhasil! Silakan Login.")),
+        const SnackBar(content: Text("Registrasi Berhasil! Cek email untuk kode OTP.")),
       );
-      
-      // Pindahkan layar kembali ke halaman LoginScreen
+
+      // Pindahkan layar ke halaman verifikasi OTP
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        MaterialPageRoute(builder: (context) => OtpVerificationScreen(email: email)),
       );
     } else {
       String errorMessage = result['detail'] ?? result['message'] ?? "Registrasi Gagal!";
@@ -120,11 +121,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextField(
                 controller: nameController,
                 style: const TextStyle(color: Colors.black87),
+                maxLength: 10,
                 decoration: InputDecoration(
                   hintText: 'Enter your full name',
                   hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
                   filled: true,
                   fillColor: Colors.white,
+                  counterText: '',
                   prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF64748B), size: 20),
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                   border: OutlineInputBorder(

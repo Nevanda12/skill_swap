@@ -53,6 +53,57 @@ class ApiService {
     }
   }
 
+  // 2b. Service untuk Verifikasi Kode OTP
+  static Future<Map<String, dynamic>> verifyOtp({
+    required String email,
+    required String otpCode,
+  }) async {
+    final url = Uri.parse('$baseUrl/verify-otp');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email,
+          "otp_code": otpCode,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
+  // 2c. Service untuk Mengirim Ulang Kode OTP
+  static Future<Map<String, dynamic>> resendOtp({required String email}) async {
+    final url = Uri.parse('$baseUrl/resend-otp');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
+  // 2d. Service untuk Login/Daftar dengan Google
+  static Future<Map<String, dynamic>> googleLogin({required String idToken}) async {
+    final url = Uri.parse('$baseUrl/auth/google');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"id_token": idToken}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
   // 3. Service untuk Mendapatkan Rekomendasi (Discovery) & Pencarian
   static Future<Map<String, dynamic>> discoverUsers(int userId, {String? searchName, String? filterSkill}) async {
     // Membangun URL beserta parameter filter jika ada
@@ -212,10 +263,15 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
   }
 
 // 10. Service untuk Mendapatkan Profil, Rating, & Keahlian User
-  static Future<Map<String, dynamic>> getUserProfile(int userId) async {
-    final url = Uri.parse('$baseUrl/profile/$userId');
+  // viewerId (opsional): ID user yang sedang login, dipakai backend untuk menghitung
+  // status "is_following" relatif terhadap user yang sedang dilihat profilnya.
+  static Future<Map<String, dynamic>> getUserProfile(int userId, {int? viewerId}) async {
+    var uri = Uri.parse('$baseUrl/profile/$userId');
+    if (viewerId != null) {
+      uri = uri.replace(queryParameters: {'viewer_id': viewerId.toString()});
+    }
     try {
-      final response = await http.get(url);
+      final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
       return {"status": "error", "message": "Gagal memuat profil: $e"};
@@ -361,6 +417,150 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       return jsonDecode(response.body);
     } catch (e) {
       return {"status": "error", "message": "Gagal memuat rekap skill: $e"};
+    }
+  }
+
+// 19. Service untuk Follow Pengguna
+  static Future<Map<String, dynamic>> followUser({
+    required int followerId,
+    required int followingId,
+  }) async {
+    final url = Uri.parse('$baseUrl/follow');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"follower_id": followerId, "following_id": followingId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal follow pengguna: $e"};
+    }
+  }
+
+  // 20. Service untuk Unfollow Pengguna
+  static Future<Map<String, dynamic>> unfollowUser({
+    required int followerId,
+    required int followingId,
+  }) async {
+    final url = Uri.parse('$baseUrl/unfollow');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"follower_id": followerId, "following_id": followingId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal unfollow pengguna: $e"};
+    }
+  }
+
+  // 21. Service untuk Mengambil Daftar Followers (Pengikut)
+  static Future<Map<String, dynamic>> getFollowers(int userId, {int? viewerId}) async {
+    var uri = Uri.parse('$baseUrl/followers/$userId');
+    if (viewerId != null) {
+      uri = uri.replace(queryParameters: {'viewer_id': viewerId.toString()});
+    }
+    try {
+      final response = await http.get(uri);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memuat daftar pengikut: $e"};
+    }
+  }
+
+  // 22. Service untuk Mengambil Daftar Following (Mengikuti)
+  static Future<Map<String, dynamic>> getFollowing(int userId, {int? viewerId}) async {
+    var uri = Uri.parse('$baseUrl/following/$userId');
+    if (viewerId != null) {
+      uri = uri.replace(queryParameters: {'viewer_id': viewerId.toString()});
+    }
+    try {
+      final response = await http.get(uri);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memuat daftar following: $e"};
+    }
+  }
+
+  // 23. Service untuk Menghapus Follower dari Akun Sendiri
+  static Future<Map<String, dynamic>> removeFollower({
+    required int userId,
+    required int followerId,
+  }) async {
+    final url = Uri.parse('$baseUrl/followers/remove');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"user_id": userId, "follower_id": followerId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal menghapus follower: $e"};
+    }
+  }
+
+  // 24. Service untuk Memulai Chat Langsung dari Profil ("Chat Sekarang")
+  static Future<Map<String, dynamic>> getOrCreateDirectMatch({
+    required int userAId,
+    required int userBId,
+  }) async {
+    final url = Uri.parse('$baseUrl/match/direct');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"user_a_id": userAId, "user_b_id": userBId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memulai chat: $e"};
+    }
+  }
+
+  // 25. Service untuk Menambah Foto Sertifikat/Portofolio ke Galeri Profil
+  static Future<Map<String, dynamic>> addGalleryPhoto({
+    required int userId,
+    required String photoBase64,
+  }) async {
+    final url = Uri.parse('$baseUrl/gallery/add');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"user_id": userId, "photo_base64": photoBase64}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal menambah foto: $e"};
+    }
+  }
+
+  // 26. Service untuk Mengambil Daftar Foto Galeri Profil
+  static Future<Map<String, dynamic>> getGalleryPhotos(int userId) async {
+    final url = Uri.parse('$baseUrl/gallery/$userId');
+    try {
+      final response = await http.get(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal memuat galeri foto: $e"};
+    }
+  }
+
+  // 27. Service untuk Menghapus Foto Galeri Profil (hanya pemilik yang boleh)
+  static Future<Map<String, dynamic>> deleteGalleryPhoto({
+    required int photoId,
+    required int userId,
+  }) async {
+    final url = Uri.parse('$baseUrl/gallery/delete/$photoId')
+        .replace(queryParameters: {'user_id': userId.toString()});
+    try {
+      final response = await http.delete(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal menghapus foto: $e"};
     }
   }
 }
