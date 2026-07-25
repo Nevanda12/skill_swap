@@ -420,6 +420,25 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
     }
   }
 
+// 18b. Service untuk Pencarian Nama User di Halaman Jelajah.
+// Beda dengan discoverUsers: tidak difilter skill dan TETAP menampilkan
+// user yang sudah pernah di-swipe di Home.
+  static Future<Map<String, dynamic>> searchUsersByName({
+    required int userId,
+    required String query,
+  }) async {
+    var uri = Uri.parse('$baseUrl/users/search').replace(queryParameters: {
+      'user_id': userId.toString(),
+      'query': query,
+    });
+    try {
+      final response = await http.get(uri);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal mencari pengguna: $e"};
+    }
+  }
+
 // 19. Service untuk Follow Pengguna
   static Future<Map<String, dynamic>> followUser({
     required int followerId,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../data/skill_catalog.dart';
+import 'user_search_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
   final Function(String) onCategorySelected;
@@ -84,9 +85,34 @@ class _ExploreScreenState extends State<ExploreScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Cari seseorang yang punya tujuan sama',
-                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const UserSearchScreen()),
+                      );
+                    },
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D1629),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF1E3A6D).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: Color(0xFF8B9CB6), size: 20),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Cari nama pengguna...',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Expanded(

@@ -755,6 +755,54 @@ def discover_users(user_id: int, search_name: str = None, filter_skill: str = No
         cursor.close()
         connection.close()
 
+# Pencarian nama user (dipakai di halaman Explore -> kolom cari nama).
+# BEDA dengan /api/discover: di sini TIDAK ada filter skill dan TIDAK
+# mengecualikan user yang sudah pernah di-swipe, jadi user yang sudah
+# pernah digeser di Home tetap bisa ditemukan lewat pencarian nama ini.
+@app.get("/api/users/search")
+def search_users_by_name(user_id: int, query: str = ""):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    cursor = connection.cursor(dictionary=True)
+    try:
+        query = (query or "").strip()
+        if not query:
+            return {"status": "success", "count": 0, "data": []}
+
+        search_query = """
+            SELECT id, full_name, profile_photo
+            FROM users
+            WHERE full_name LIKE %s
+            AND id != %s
+            AND id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = %s)
+            AND id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = %s)
+            ORDER BY full_name ASC
+            LIMIT 30
+        """
+        params = [f"{query}%", user_id, user_id, user_id]
+        cursor.execute(search_query, params)
+        users = cursor.fetchall()
+
+        final_data = [
+            {
+                "id": u["id"],
+                "name": u["full_name"],
+                "profile_photo": u["profile_photo"],
+            }
+            for u in users
+        ]
+
+        return {"status": "success", "count": len(final_data), "data": final_data}
+
+    except mysql.connector.Error as err:
+        print(f"❌ SQL ERROR: {err}")
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
 # =====================================================================
 # CHAPTER 3: CHAT SYSTEM ENDPOINTS (Manajemen Obrolan Setelah Match)
 # =====================================================================
