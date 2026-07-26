@@ -26,7 +26,8 @@ class ApiService {
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+  print("=== ERROR SAAT LOGIN: $e ===");
+  return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
 

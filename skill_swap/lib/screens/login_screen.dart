@@ -52,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SnackBar(content: Text("Memverifikasi akun Google..."), duration: Duration(seconds: 1)),
       );
 
+      print("=== TES GOOGLE LOGIN DIMULAI ===");
       var result = await ApiService.googleLogin(idToken: idToken);
 
       if (!mounted) return;
@@ -146,7 +147,9 @@ class _LoginScreenState extends State<LoginScreen> {
       const SnackBar(content: Text("Sedang memverifikasi data..."), duration: Duration(seconds: 1)),
     );
 
+    print("=== TES LOGIN DIMULAI ===");
     var result = await ApiService.loginUser(email: email, password: password);
+    print("=== HASIL LOGIN: $result ===");
 
     if (!mounted) return; 
 
