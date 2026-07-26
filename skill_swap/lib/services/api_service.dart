@@ -26,7 +26,7 @@ class ApiService {
 
       return jsonDecode(response.body);
     } catch (e) {
-  print("=== ERROR SAAT LOGIN: $e ===");
+  print("=== ERROR SAAT REGISTRASI: $e ===");
   return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -50,6 +50,7 @@ class ApiService {
 
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT LOGIN: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -71,6 +72,7 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT VERIFIKASI OTP: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -86,6 +88,7 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGIRIM ULANG OTP: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -101,6 +104,7 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT GOOGLE LOGIN: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -126,6 +130,7 @@ class ApiService {
       final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT DISCOVERY USERS: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -150,6 +155,7 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT SWIPE USER: $e ===");
       return {"status": "error", "message": "Gagal terhubung ke server: $e"};
     }
   }
@@ -160,6 +166,7 @@ class ApiService {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENDAPATKAN RIWAYAT CHAT: $e ===");
       return {"status": "error", "message": "Gagal memuat chat: $e"};
     }
   }
@@ -183,6 +190,7 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGIRIM PESAN CHAT: $e ===");
       return {"status": "error", "message": "Gagal mengirim pesan: $e"};
     }
   }
@@ -193,6 +201,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGAMBIL MATCHES AKTIF: $e ===");
       return {"status": "error", "message": "Gagal memuat daftar chat: $e"};
     }
   }
@@ -217,6 +226,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MEMPERBARUI STATUS: $e ===");
       return {"status": "error", "message": "Gagal memperbarui status: $e"};
     }
   }
@@ -245,6 +255,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGIRIM ULASAN: $e ===");
       return {"status": "error", "message": "Gagal mengirim ulasan: $e"};
     }
   }
@@ -259,6 +270,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGECEK ULASAN: $e ===");
       return {"status": "error", "message": "Gagal mengecek ulasan: $e"};
     }
   }
@@ -275,6 +287,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENDAPATKAN PROFIL: $e ===");
       return {"status": "error", "message": "Gagal memuat profil: $e"};
     }
   }
@@ -286,6 +299,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENDAPATKAN DAFTAR ULASAN: $e ===");
       return {"status": "error", "message": "Gagal memuat daftar ulasan: $e"};
     }
   }
@@ -307,6 +321,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT UPDATE FOTO PROFIL: $e ===");
       return {"status": "error", "message": "Gagal update foto: $e"};
     }
   }
@@ -328,6 +343,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT UPDATE LATAR BELAKANG PROFIL: $e ===");
       return {"status": "error", "message": "Gagal update background: $e"};
     }
   }
@@ -349,6 +365,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT UPDATE SKILLS: $e ===");
       return {"status": "error", "message": "Gagal update skills: $e"};
     }
   }
@@ -360,6 +377,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGECEK NOTIFIKASI PESAN: $e ===");
       return {"status": "error", "message": "Gagal mengecek notifikasi pesan: $e"};
     }
   }
@@ -374,6 +392,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.put(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENANDAI PESAN TELAH DIBACA: $e ===");
       return {"status": "error", "message": "Gagal update status baca: $e"};
     }
   }
@@ -385,6 +404,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.delete(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGHAPUS OBRALAN: $e ===");
       return {"status": "error", "message": "Gagal menghapus obrolan: $e"};
     }
   }
@@ -406,6 +426,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MEMBLOKIR PENGGUNA: $e ===");
       return {"status": "error", "message": "Gagal memblokir pengguna: $e"};
     }
   }
@@ -417,6 +438,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGAMBIL REKAP SKILL: $e ===");
       return {"status": "error", "message": "Gagal memuat rekap skill: $e"};
     }
   }
@@ -436,6 +458,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENCARI PENGGUNA: $e ===");
       return {"status": "error", "message": "Gagal mencari pengguna: $e"};
     }
   }
@@ -454,6 +477,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT FOLLOW PENGGUNA: $e ===");
       return {"status": "error", "message": "Gagal follow pengguna: $e"};
     }
   }
@@ -472,6 +496,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT UNFOLLOW PENGGUNA: $e ===");
       return {"status": "error", "message": "Gagal unfollow pengguna: $e"};
     }
   }
@@ -486,6 +511,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGAMBIL FOLLOWERS: $e ===");
       return {"status": "error", "message": "Gagal memuat daftar pengikut: $e"};
     }
   }
@@ -500,6 +526,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(uri);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGAMBIL FOLLOWING: $e ===");
       return {"status": "error", "message": "Gagal memuat daftar following: $e"};
     }
   }
@@ -518,6 +545,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGHAPUS FOLLOWER: $e ===");
       return {"status": "error", "message": "Gagal menghapus follower: $e"};
     }
   }
@@ -536,6 +564,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       );
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MEMULAI CHAT: $e ===");
       return {"status": "error", "message": "Gagal memulai chat: $e"};
     }
   }
@@ -562,6 +591,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       }
       return decoded;
     } catch (e) {
+      print("=== ERROR SAAT MENAMBAH FOTO: $e ===");
       return {"status": "error", "message": "Gagal menambah foto: $e"};
     }
   }
@@ -573,6 +603,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.get(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGAMBIL GALERI FOTO: $e ===");
       return {"status": "error", "message": "Gagal memuat galeri foto: $e"};
     }
   }
@@ -588,6 +619,7 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       final response = await http.delete(url);
       return jsonDecode(response.body);
     } catch (e) {
+      print("=== ERROR SAAT MENGHAPUS FOTO: $e ===");
       return {"status": "error", "message": "Gagal menghapus foto: $e"};
     }
   }
