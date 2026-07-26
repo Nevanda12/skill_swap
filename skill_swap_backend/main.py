@@ -4,8 +4,7 @@ import random
 import string
 import os
 from dotenv import load_dotenv
-import smtplib
-from email.mime.text import MIMEText
+import requests
 from datetime import datetime, timedelta
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
@@ -20,10 +19,19 @@ app = FastAPI()
 # KONFIGURASI EMAIL (untuk kirim OTP) & GOOGLE LOGIN
 # Ambil dari Environment Variable, JANGAN taruh password langsung di kode!
 # Cara set env variable ada di penjelasan chat.
+#
+# CATATAN: Railway memblokir koneksi SMTP keluar (port 25/465/587) di plan
+# Free/Trial/Hobby, jadi kirim OTP sekarang lewat Brevo HTTPS API, bukan
+# smtplib lagi. SMTP_EMAIL & SMTP_APP_PASSWORD sudah tidak dipakai untuk
+# kirim email, tapi dibiarkan kalau masih dipakai di tempat lain.
 # =====================================================================
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")          # contoh: skillswapapp@gmail.com
 SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD")  # App Password 16 digit dari Google
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")    # Client ID dari Google Cloud Console
+
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")          # API key dari Brevo (Settings > SMTP & API)
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", SMTP_EMAIL)  # alamat pengirim yang sudah diverifikasi di Brevo
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Skill Swap")
 
 OTP_EXPIRE_MINUTES = 10
 
@@ -34,14 +42,21 @@ def generate_otp_code() -> str:
 
 
 def send_otp_email(to_email: str, full_name: str, otp_code: str):
-    """Mengirim kode OTP ke email asli pengguna lewat Gmail SMTP."""
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+    """Mengirim kode OTP ke email asli pengguna lewat Brevo HTTPS API.
+
+    Dulu pakai smtplib (Gmail SMTP), tapi Railway (plan Free/Trial/Hobby)
+    memblokir koneksi SMTP keluar sehingga selalu gagal dengan
+    '[Errno 101] Network is unreachable'. Brevo dipakai karena API-nya
+    lewat HTTPS biasa (tidak diblokir) dan sender cukup diverifikasi
+    lewat kode di email, tanpa perlu domain sendiri.
+    """
+    if not BREVO_API_KEY or not BREVO_SENDER_EMAIL:
         # Kalau env variable belum di-set, OTP tidak terkirim tapi server tidak crash.
-        print(f"[WARNING] SMTP belum dikonfigurasi. OTP untuk {to_email} adalah: {otp_code}")
+        print(f"[WARNING] Brevo belum dikonfigurasi. OTP untuk {to_email} adalah: {otp_code}")
         return
 
     subject = "Kode Verifikasi Skill Swap Kamu"
-    body = f"""Halo {full_name},
+    body_text = f"""Halo {full_name},
 
 Kode OTP kamu adalah: {otp_code}
 
@@ -50,15 +65,28 @@ Kode ini berlaku selama {OTP_EXPIRE_MINUTES} menit. Jangan berikan kode ini ke s
 Salam,
 Tim Skill Swap
 """
-    message = MIMEText(body)
-    message["Subject"] = subject
-    message["From"] = SMTP_EMAIL
-    message["To"] = to_email
+
+    payload = {
+        "sender": {"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        "to": [{"email": to_email, "name": full_name}],
+        "subject": subject,
+        "textContent": body_text,
+    }
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json",
+    }
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, to_email, message.as_string())
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        if response.status_code >= 400:
+            print(f"[ERROR] Gagal mengirim email OTP ke {to_email}: {response.status_code} {response.text}")
     except Exception as e:
         print(f"[ERROR] Gagal mengirim email OTP ke {to_email}: {e}")
 
