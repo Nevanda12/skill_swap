@@ -3,7 +3,7 @@ import 'dart:convert';
 
 class ApiService {
   // Pastikan IP ini sesuai dengan IP laptopmu yang sukses!
-  static const String baseUrl = "skillswap-production-2f36.up.railway.app/api";
+  static const String baseUrl = "https://skillswap-production-2f36.up.railway.app/api";
 
   // 1. Service untuk Registrasi User
   static Future<Map<String, dynamic>> registerUser({
