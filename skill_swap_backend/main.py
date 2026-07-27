@@ -58,7 +58,8 @@ def send_push_notification(fcm_token: str, title: str, body: str):
             notification=messaging.Notification(title=title, body=body),
             token=fcm_token,
         )
-        messaging.send(message)
+        response = messaging.send(message)
+        print(f"[INFO] Notifikasi berhasil dikirim, response: {response}")
     except Exception as e:
         print(f"[WARNING] Gagal kirim notifikasi: {e}")
 
@@ -899,7 +900,10 @@ def send_message(chat_input: ChatMessageInput):
             receiver_row = cursor.fetchone()
             if receiver_row and receiver_row.get("fcm_token"):
                 sender_name = sender_row["full_name"] if sender_row else "Seseorang"
+                print(f"[INFO] Mengirim notifikasi ke user {receiver_id}, token: {receiver_row['fcm_token'][:20]}...")
                 send_push_notification(receiver_row["fcm_token"], sender_name, chat_input.message)
+            else:
+                print(f"[INFO] Tidak kirim notifikasi — user {receiver_id} tidak punya fcm_token.")
 
         return {
             "status": "success",
