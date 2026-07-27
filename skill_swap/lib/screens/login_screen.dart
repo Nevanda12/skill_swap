@@ -7,6 +7,8 @@ import 'edit_profile_screen.dart'; // Halaman lengkapi profil untuk akun baru
 import 'profile_screen.dart'; // Tujuan setelah selesai lengkapi profil
 import 'otp_verification_screen.dart'; // Halaman verifikasi OTP
 import '../services/session_service.dart'; // Penyimpan status login
+import '../services/notification_service.dart'; // Service notifikasi
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -89,6 +91,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // Mengecek apakah profil user masih kosong (akun baru yang belum mengisi skill
   // sama sekali). Jika kosong, arahkan dulu ke Edit Profile sebelum masuk Home.
   Future<void> _goToHomeOrEditProfile(int userId) async {
+    NotificationService.registerToken(userId);
+
     var profileResult = await ApiService.getUserProfile(userId);
     if (!mounted) return;
 

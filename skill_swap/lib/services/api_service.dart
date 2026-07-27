@@ -367,7 +367,25 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       return {"status": "error", "message": "Gagal update nama: $e"};
     }
   }
-
+  static Future<Map<String, dynamic>> updateFcmToken({
+    required int userId,
+    required String fcmToken,
+  }) async {
+    final url = Uri.parse('$baseUrl/profile/fcm-token');
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "fcm_token": fcmToken,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal daftar token: $e"};
+    }
+  }
   // 13. Service untuk Update Skills
   static Future<Map<String, dynamic>> saveUserSkills({
     required int userId,

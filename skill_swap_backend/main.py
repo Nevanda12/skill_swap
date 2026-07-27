@@ -4,15 +4,25 @@ import random
 import string
 import os
 from dotenv import load_dotenv
+import json
+import firebase_admin
+from firebase_admin import credentials, messaging
 import requests
 from datetime import datetime, timedelta
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
+
 # Membaca isi file .env dan menjadikannya environment variable
 # HARUS dipanggil SEBELUM os.environ.get() di bawah
 load_dotenv()
-
+firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+if firebase_creds_json:
+    cred = credentials.Certificate(json.loads(firebase_creds_json))
+    firebase_admin.initialize_app(cred)
+    print("Firebase Admin berhasil diinisialisasi.")
+else:
+    print("[WARNING] FIREBASE_CREDENTIALS_JSON belum di-set, notifikasi push tidak akan terkirim.")
 app = FastAPI()
 
 # =====================================================================
@@ -40,6 +50,17 @@ def generate_otp_code() -> str:
     """Membuat 6 digit kode OTP acak, contoh: '482913'"""
     return "".join(random.choices(string.digits, k=6))
 
+def send_push_notification(fcm_token: str, title: str, body: str):
+    if not fcm_token:
+        return
+    try:
+        message = messaging.Message(
+            notification=messaging.Notification(title=title, body=body),
+            token=fcm_token,
+        )
+        messaging.send(message)
+    except Exception as e:
+        print(f"[WARNING] Gagal kirim notifikasi: {e}")
 
 def send_otp_email(to_email: str, full_name: str, otp_code: str):
     """Mengirim kode OTP ke email asli pengguna lewat Brevo HTTPS API.
@@ -864,7 +885,22 @@ def send_message(chat_input: ChatMessageInput):
         """
         cursor.execute(query_insert_chat, (chat_input.match_id, chat_input.sender_id, chat_input.message))
         connection.commit()
-        
+
+        # Cari penerima pesan (lawan bicara di match ini) dan kirim notifikasi
+        cursor.execute(
+            "SELECT user1_id, user2_id FROM matches WHERE id = %s", (chat_input.match_id,)
+        )
+        match_row = cursor.fetchone()
+        if match_row:
+            receiver_id = match_row["user2_id"] if match_row["user1_id"] == chat_input.sender_id else match_row["user1_id"]
+            cursor.execute("SELECT fcm_token, full_name FROM users WHERE id = %s", (chat_input.sender_id,))
+            sender_row = cursor.fetchone()
+            cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (receiver_id,))
+            receiver_row = cursor.fetchone()
+            if receiver_row and receiver_row.get("fcm_token"):
+                sender_name = sender_row["full_name"] if sender_row else "Seseorang"
+                send_push_notification(receiver_row["fcm_token"], sender_name, chat_input.message)
+
         return {
             "status": "success",
             "message": "Message sent successfully!",
@@ -1199,6 +1235,26 @@ def update_background_photo(data: BackgroundPhotoInput):
         cursor.execute("UPDATE users SET background_photo = %s WHERE id = %s", (data.photo_base64, data.user_id))
         connection.commit()
         return {"status": "success", "message": "Latar belakang profil berhasil diperbarui!"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+class FcmTokenInput(BaseModel):
+    user_id: int
+    fcm_token: str
+
+@app.put("/api/profile/fcm-token")
+def update_fcm_token(data: FcmTokenInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE users SET fcm_token = %s WHERE id = %s", (data.fcm_token, data.user_id))
+        connection.commit()
+        return {"status": "success"}
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
