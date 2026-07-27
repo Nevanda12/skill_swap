@@ -91,6 +91,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
        return;
     }
 
+    if (_nameController.text.trim().length > 10) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+         content: Text('Nama maksimal 10 karakter.'),
+         backgroundColor: Colors.red,
+       ));
+       return;
+    }
+
     if (_selectedWantSkill.isEmpty) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
          content: Text('Tolong pilih 1 skill yang ingin dipelajari (WANT).'),
@@ -215,12 +223,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               TextField(
                 controller: _nameController,
                 style: const TextStyle(color: Colors.white),
+                maxLength: 10,
                 decoration: InputDecoration(
                   hintText: 'Masukkan nama lengkap',
                   hintStyle: const TextStyle(color: Colors.white38),
                   filled: true,
                   fillColor: const Color(0xFF1E293B),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  counterStyle: const TextStyle(color: Colors.white38, fontSize: 11),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
