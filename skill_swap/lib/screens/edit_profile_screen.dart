@@ -25,6 +25,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _base64Background;
 
   bool isSaving = false;
+  late final TextEditingController _nameController;
 
   final List<String> _availableSkills = SkillCatalog.all;
 
@@ -46,6 +47,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (widget.currentData['background_photo'] != null) {
       _base64Background = widget.currentData['background_photo'];
     }
+    _nameController = TextEditingController(text: widget.currentData['full_name'] ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
   }
 
   Future<void> _pickImage() async {
@@ -75,6 +83,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _saveProfile() async {
+    if (_nameController.text.trim().isEmpty) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+         content: Text('Nama tidak boleh kosong.'),
+         backgroundColor: Colors.red,
+       ));
+       return;
+    }
+
     if (_selectedWantSkill.isEmpty) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
          content: Text('Tolong pilih 1 skill yang ingin dipelajari (WANT).'),
@@ -84,6 +100,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     setState(() { isSaving = true; });
+
+    await ApiService.updateFullName(userId: widget.userId, fullName: _nameController.text.trim());
 
     if (_imageFile != null && _base64Image != null) {
        await ApiService.updateProfilePhoto(userId: widget.userId, photoBase64: _base64Image!);
@@ -181,6 +199,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
               const SizedBox(height: 32),
+
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('Full Name', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Masukkan nama lengkap',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.blueAccent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // ===== Latar Belakang Profil (custom dari galeri) =====
 
               // ===== Latar Belakang Profil (custom dari galeri) =====
               Row(

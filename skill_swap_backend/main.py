@@ -1205,6 +1205,27 @@ def update_background_photo(data: BackgroundPhotoInput):
         cursor.close()
         connection.close()
 
+class FullNameInput(BaseModel):
+    user_id: int
+    full_name: str
+
+@app.put("/api/profile/name")
+def update_full_name(data: FullNameInput):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE users SET full_name = %s WHERE id = %s", (data.full_name, data.user_id))
+        connection.commit()
+        return {"status": "success", "message": "Nama berhasil diperbarui!"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
 # =====================================================================
 # CHAPTER 7: NOTIFICATION & UNREAD MESSAGES
 # =====================================================================

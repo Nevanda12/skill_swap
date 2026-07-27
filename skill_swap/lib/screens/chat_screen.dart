@@ -30,6 +30,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
   bool isLoading = true;
   Timer? _chatTimer;
@@ -62,8 +63,21 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void dispose() {
     _chatTimer?.cancel();
     _messageController.dispose();
+    _scrollController.dispose();
     _waveController.dispose();
     super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   // Info level (warna, ikon, teks, persentase isi) berdasarkan jumlah chat.
@@ -272,6 +286,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         }
       });
       _onMessagesUpdated(silent: true);
+      _scrollToBottom();
 
       await ApiService.markMessagesAsRead(
         matchId: widget.matchId,
@@ -310,6 +325,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           _messages = updatedMessages;
         });
         _onMessagesUpdated();
+        _scrollToBottom();
 
         ApiService.markMessagesAsRead(
           matchId: widget.matchId,
@@ -331,6 +347,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _messageController.clear();
       });
       _onMessagesUpdated();
+      _scrollToBottom();
 
       await ApiService.sendChatMessage(
         matchId: widget.matchId,
@@ -396,11 +413,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0B1220),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0B1220),
         elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: const IconThemeData(color: Colors.white),
         title: GestureDetector(
           onTap: () {
             Navigator.push(
@@ -434,7 +451,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             widget.chatPartnerName,
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
-                            style: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                         ),
                         // Tampil jika level partner tercapai & belum direview
@@ -477,8 +494,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         actions: [
           PopupMenuButton<String>(
-            color: Colors.white,
-            icon: const Icon(Icons.more_horiz, color: Colors.black87),
+            color: const Color(0xFF1E293B),
+            icon: const Icon(Icons.more_horiz, color: Colors.white),
             onSelected: (value) {
               if (value == 'delete') {
                 _showConfirmDialog('Hapus Obrolan', 'Yakin ingin menghapus obrolan ini secara permanen?', _deleteChat);
@@ -487,7 +504,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               }
             },
             itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(value: 'delete', child: Text('Hapus Obrolan', style: TextStyle(color: Colors.black87))),
+              const PopupMenuItem(value: 'delete', child: Text('Hapus Obrolan', style: TextStyle(color: Colors.white))),
               const PopupMenuItem(value: 'block', child: Text('Blokir Pengguna', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
             ],
           ),
@@ -499,6 +516,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator(color: Colors.blue))
                 : ListView.builder(
+                    controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
@@ -589,8 +607,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+        color: Color(0xFF0B1220),
+        border: Border(top: BorderSide(color: Color(0xFF1E293B))),
       ),
       child: Row(
         children: [
@@ -600,7 +618,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
+                color: const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Row(
@@ -608,10 +626,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   Expanded(
                     child: TextField(
                       controller: _messageController,
-                      style: const TextStyle(color: Colors.black87),
+                      style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         hintText: 'Ketik pesan...',
-                        hintStyle: TextStyle(color: Colors.grey),
+                        hintStyle: TextStyle(color: Colors.white38),
                         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         border: InputBorder.none,
                       ),
@@ -867,7 +885,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           margin: const EdgeInsets.only(bottom: 4),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: isMe ? const Color(0xFF1A73E8) : const Color(0xFFF0F4F9),
+            color: isMe ? const Color(0xFF1A73E8) : const Color(0xFF1E293B),
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(16),
               topRight: const Radius.circular(16),
@@ -878,7 +896,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           child: Text(
             text,
             style: TextStyle(
-              color: isMe ? Colors.white : Colors.black87,
+              color: Colors.white,
               fontSize: 14,
             ),
           ),

@@ -18,7 +18,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   // Palet warna utama: putih bersih + sedikit aksen biru & emas (selaras dengan ChatScreen)
   static const Color primaryBlue = Color(0xFF1A73E8);
   static const Color partnerGold = Color(0xFFF29C11);
-  static const Color bgColor = Color(0xFFF8F9FA);
+  static const Color bgColor = Color(0xFF0B1220);
 
   // Ambang batas jumlah pesan agar dianggap level "Partner".
   // Nilai ini sengaja disamakan dengan _levelInfoForCount() di ChatScreen.
@@ -106,12 +106,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     children: [
                       if (partners.isNotEmpty) ...[
                         _buildPartnerCarousel(partners),
-                        Divider(height: 1, thickness: 1, color: Colors.grey[200]),
+                        Divider(height: 1, thickness: 1, color: Colors.grey[850]),
                       ],
                       for (int i = 0; i < _matches.length; i++) ...[
                         _buildChatTile(_matches[i]),
                         if (i != _matches.length - 1)
-                          Divider(height: 1, thickness: 1, indent: 78, color: Colors.grey[200]),
+                          Divider(height: 1, thickness: 1, indent: 78, color: Colors.grey[850]),
                       ],
                     ],
                   ),
@@ -122,8 +122,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   // AppBar dengan tombol back hitam, judul "Message" biru, dan logo di kanan
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      backgroundColor: const Color(0xFF0B1220),
+      surfaceTintColor: const Color(0xFF0B1220),
       elevation: 0.5,
       titleSpacing: 20,
       title: const Text(
@@ -267,7 +267,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return InkWell(
       onTap: () => _openChat(match),
       child: Container(
-        color: Colors.white,
+        color: const Color(0xFF0B1220),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
@@ -289,7 +289,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                           match['partner_name'] ?? '',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.black87, fontSize: 15, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                         ),
                       ),
                       if (lastTime.isNotEmpty)
@@ -314,7 +314,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: hasUnread ? Colors.black87 : Colors.grey[500],
+                            color: hasUnread ? Colors.white : Colors.grey[500],
                             fontSize: 13,
                             fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
                           ),

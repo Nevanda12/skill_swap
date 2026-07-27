@@ -348,6 +348,26 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
     }
   }
 
+  static Future<Map<String, dynamic>> updateFullName({
+    required int userId,
+    required String fullName,
+  }) async {
+    final url = Uri.parse('$baseUrl/profile/name');
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "full_name": fullName,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal update nama: $e"};
+    }
+  }
+
   // 13. Service untuk Update Skills
   static Future<Map<String, dynamic>> saveUserSkills({
     required int userId,
