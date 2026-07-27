@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../services/api_service.dart';
 import 'profile_screen.dart';
 import 'dart:convert';
@@ -31,6 +32,8 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _messageFocusNode = FocusNode();
+  bool _showEmojiPicker = false;
   List<Map<String, dynamic>> _messages = [];
   bool isLoading = true;
   Timer? _chatTimer;
@@ -63,6 +66,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void dispose() {
     _chatTimer?.cancel();
     _messageController.dispose();
+    _messageFocusNode.dispose();
     _scrollController.dispose();
     _waveController.dispose();
     super.dispose();
@@ -357,6 +361,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _toggleEmojiPicker() {
+    if (_showEmojiPicker) {
+      setState(() => _showEmojiPicker = false);
+      _messageFocusNode.requestFocus();
+    } else {
+      _messageFocusNode.unfocus();
+      setState(() => _showEmojiPicker = true);
+    }
+  }
+
   void _showConfirmDialog(String title, String content, VoidCallback onConfirm) {
     showDialog(
       context: context,
@@ -605,48 +619,100 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Widget _buildMessageInput() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
         color: Color(0xFF0B1220),
         border: Border(top: BorderSide(color: Color(0xFF1E293B))),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Panggil fungsi widget indikator level baru di sini
-          _buildLevelProgress(), 
-          const SizedBox(width: 12),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        hintText: 'Ketik pesan...',
-                        hintStyle: TextStyle(color: Colors.white38),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        border: InputBorder.none,
-                      ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                // Panggil fungsi widget indikator level baru di sini
+                _buildLevelProgress(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            focusNode: _messageFocusNode,
+                            style: const TextStyle(color: Colors.white),
+                            onTap: () {
+                              if (_showEmojiPicker) {
+                                setState(() => _showEmojiPicker = false);
+                              }
+                            },
+                            decoration: const InputDecoration(
+                              hintText: 'Ketik pesan...',
+                              hintStyle: TextStyle(color: Colors.white38),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: GestureDetector(
+                            onTap: _toggleEmojiPicker,
+                            child: Icon(
+                              _showEmojiPicker
+                                  ? Icons.keyboard_alt_outlined
+                                  : Icons.emoji_emotions_outlined,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Icon(Icons.emoji_emotions_outlined, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Icon(Icons.send_outlined, color: Colors.grey[600], size: 28),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _sendMessage,
-            child: Icon(Icons.send_outlined, color: Colors.grey[600], size: 28),
+          Offstage(
+            offstage: !_showEmojiPicker,
+            child: SizedBox(
+              height: 280,
+              child: EmojiPicker(
+                textEditingController: _messageController,
+                onEmojiSelected: (category, emoji) {
+                  // textEditingController sudah menyisipkan emoji secara
+                  // otomatis, callback ini dibiarkan kosong.
+                },
+                config: Config(
+                  height: 280,
+                  emojiViewConfig: EmojiViewConfig(
+                    backgroundColor: const Color(0xFF0B1220),
+                  ),
+                  bottomActionBarConfig: const BottomActionBarConfig(
+                    backgroundColor: Color(0xFF1E293B),
+                    buttonColor: Color(0xFF1E293B),
+                  ),
+                  categoryViewConfig: const CategoryViewConfig(
+                    backgroundColor: Color(0xFF0B1220),
+                    iconColorSelected: Color(0xFF1A73E8),
+                    indicatorColor: Color(0xFF1A73E8),
+                  ),
+                  searchViewConfig: const SearchViewConfig(
+                    backgroundColor: Color(0xFF0B1220),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
