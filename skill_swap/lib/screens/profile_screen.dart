@@ -314,6 +314,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _handleLogout();
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                title: const Text('Hapus Akun', style: TextStyle(color: Colors.redAccent)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleDeleteAccount();
+                },
+              ),
               const SizedBox(height: 12),
             ],
           ),
@@ -364,6 +372,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _handleDeleteAccount() async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Akun'),
+        content: const Text(
+          'Yakin ingin menghapus akun ini? Semua data (profil, chat, match, review) akan hilang permanen dan tidak bisa dikembalikan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!mounted) return;
+
+    var result = await ApiService.deleteAccount(userId: widget.currentUserId);
+
+    if (result['status'] == 'success') {
+      await SessionService.clearSession();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message'] ?? 'Gagal menghapus akun.')),
+      );
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     final String? bgPhoto = userData != null ? userData!['background_photo'] : null;

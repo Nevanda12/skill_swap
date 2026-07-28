@@ -403,6 +403,18 @@ static Future<Map<String, dynamic>> getActiveMatches(int userId) async {
       return {"status": "error", "message": "Gagal update nama: $e"};
     }
   }
+  static Future<Map<String, dynamic>> deleteAccount({required int userId}) async {
+    final url = Uri.parse('$baseUrl/account/$userId');
+    try {
+      final response = await http.delete(url);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
+  
+
   static Future<Map<String, dynamic>> updateFcmToken({
     required int userId,
     required String fcmToken,
