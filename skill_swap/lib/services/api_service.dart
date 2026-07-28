@@ -93,6 +93,42 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> forgotPassword({required String email}) async {
+    final url = Uri.parse('$baseUrl/forgot-password');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String otpCode,
+    required String newPassword,
+  }) async {
+    final url = Uri.parse('$baseUrl/reset-password');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email,
+          "otp_code": otpCode,
+          "new_password": newPassword,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {"status": "error", "message": "Gagal terhubung ke server: $e"};
+    }
+  }
+
   // 2d. Service untuk Login/Daftar dengan Google
   static Future<Map<String, dynamic>> googleLogin({required String idToken}) async {
     final url = Uri.parse('$baseUrl/auth/google');

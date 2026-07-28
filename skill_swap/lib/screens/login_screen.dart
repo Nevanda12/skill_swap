@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../services/api_service.dart'; // Mengimpor API Service[cite: 1]
 import 'register_screen.dart'; //[cite: 1]
+import 'forgot_password_screen.dart';
 import 'home_screen.dart'; //[cite: 1]
 import 'edit_profile_screen.dart'; // Halaman lengkapi profil untuk akun baru
 import 'profile_screen.dart'; // Tujuan setelah selesai lengkapi profil
@@ -417,7 +418,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           alignment: Alignment.centerRight, //[cite: 1]
                           child: TextButton(
                             onPressed: () {
-                              // Aksi forgot password[cite: 1]
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                              );
                             },
                             child: const Text(
                               'Forgot password?',

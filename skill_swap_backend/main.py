@@ -480,6 +480,87 @@ def resend_otp(data: ResendOtpInput):
         db.close()
 
 
+# 4d. Model & Endpoint untuk Lupa Password (kirim OTP reset)
+class ForgotPasswordInput(BaseModel):
+    email: EmailStr
+
+@app.post("/api/forgot-password")
+def forgot_password(data: ForgotPasswordInput):
+    db = get_db_connection()
+    if not db:
+        return {"status": "error", "message": "Database connection failed"}
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, full_name FROM users WHERE email = %s", (data.email,))
+        user = cursor.fetchone()
+
+        if not user:
+            return {"status": "error", "message": "Akun dengan email ini tidak ditemukan."}
+
+        otp_code = generate_otp_code()
+        otp_expires_at = datetime.now() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+
+        cursor.execute(
+            "UPDATE users SET otp_code = %s, otp_expires_at = %s WHERE id = %s",
+            (otp_code, otp_expires_at, user["id"])
+        )
+        db.commit()
+
+        send_otp_email(data.email, user["full_name"], otp_code)
+
+        return {"status": "success", "message": "Kode OTP reset password sudah dikirim ke email kamu."}
+    except mysql.connector.Error as err:
+        return {"status": "error", "message": f"Terjadi kesalahan: {err}"}
+    finally:
+        cursor.close()
+        db.close()
+
+
+# 4e. Model & Endpoint untuk Submit Password Baru
+class ResetPasswordInput(BaseModel):
+    email: EmailStr
+    otp_code: str
+    new_password: str
+
+@app.post("/api/reset-password")
+def reset_password(data: ResetPasswordInput):
+    db = get_db_connection()
+    if not db:
+        return {"status": "error", "message": "Database connection failed"}
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT id, otp_code, otp_expires_at FROM users WHERE email = %s",
+            (data.email,)
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            return {"status": "error", "message": "Akun tidak ditemukan."}
+
+        if not user["otp_code"] or user["otp_code"] != data.otp_code:
+            return {"status": "error", "message": "Kode OTP salah!"}
+
+        if user["otp_expires_at"] and datetime.now() > user["otp_expires_at"]:
+            return {"status": "error", "message": "Kode OTP sudah kadaluarsa, silakan kirim ulang."}
+
+        hashed_password = pwd_context.hash(data.new_password)
+        cursor.execute(
+            "UPDATE users SET password_hash = %s, otp_code = NULL, otp_expires_at = NULL WHERE id = %s",
+            (hashed_password, user["id"])
+        )
+        db.commit()
+
+        return {"status": "success", "message": "Password berhasil diubah. Silakan login dengan password baru."}
+    except mysql.connector.Error as err:
+        return {"status": "error", "message": f"Terjadi kesalahan: {err}"}
+    finally:
+        cursor.close()
+        db.close()
+
+
 # 5. Model Data Validasi untuk Menerima Input Login dari Frontend
 class LoginInput(BaseModel):
     email: EmailStr
@@ -926,7 +1007,7 @@ def get_chat_history(match_id: int):
     try:
         # Menggunakan full_name agar sesuai dengan skema tabel users kamu
         query_history = """
-            SELECT c.id, c.sender_id, u.full_name AS sender_name, c.message, c.timestamp 
+            SELECT c.id, c.sender_id, u.full_name AS sender_name, c.message, c.timestamp, c.is_read
             FROM chats c
             JOIN users u ON c.sender_id = u.id
             WHERE c.match_id = %s

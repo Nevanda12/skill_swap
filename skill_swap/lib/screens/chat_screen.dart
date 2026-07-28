@@ -285,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               'text': msg['message'],
               'isMe': msg['sender_id'] == widget.currentUserId,
               'time': _formatTime(msg['created_at']),
+              'isRead': msg['is_read'] == true || msg['is_read'] == 1,
             };
           }).toList();
         }
@@ -346,7 +347,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _messages.add({
           'text': text, 
           'isMe': true,
-          'time': _formatTime(null)
+          'time': _formatTime(null),
+          'isRead': false,
         });
         _messageController.clear();
       });
@@ -535,7 +537,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      return _buildChatBubble(message['text'], message['isMe'], message['time']);
+                      return _buildChatBubble(message['text'], message['isMe'], message['time'], message['isRead'] ?? false);
                     },
                   ),
           ),
@@ -943,7 +945,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildChatBubble(String text, bool isMe, String time) {
+  Widget _buildChatBubble(String text, bool isMe, String time, bool isRead) {
     return Column(
       crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
@@ -969,12 +971,24 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            time,
-            style: const TextStyle(
-              color: Colors.black38,
-              fontSize: 10,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                time,
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 10,
+                ),
+              ),
+              if (isMe && isRead) ...[
+                const SizedBox(width: 6),
+                const Text(
+                  'Dibaca',
+                  style: TextStyle(color: Color(0xFF1A73E8), fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ],
           ),
         ),
       ],
