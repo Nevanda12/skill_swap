@@ -1346,6 +1346,24 @@ def update_fcm_token(data: FcmTokenInput):
         cursor.close()
         connection.close()
 
+@app.delete("/api/account/{user_id}")
+def delete_account(user_id: int):
+    connection = get_db_connection()
+    if not connection:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    cursor = connection.cursor()
+    try:
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Akun tidak ditemukan.")
+        return {"status": "success", "message": "Akun berhasil dihapus."}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
 class FullNameInput(BaseModel):
     user_id: int
     full_name: str
